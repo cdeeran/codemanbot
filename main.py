@@ -28,6 +28,7 @@ CLIENT_SECRET = os.environ.get("CLIENT_SECRET")
 NICKNAME = os.environ.get("NICKNAME")
 PREFIX = os.environ.get("PREFIX")
 CHANNEL = os.environ.get("CHANNEL")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 
 def main():
@@ -40,8 +41,8 @@ def main():
         client_secret=CLIENT_SECRET,
         prefix=PREFIX,
         channels=[CHANNEL],
-        nickname=NICKNAME,
-        logging=True,
+        openai_key=OPENAI_API_KEY,
+        logging=False,
     )
 
     codemanbot.run()
