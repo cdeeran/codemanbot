@@ -5,7 +5,8 @@
 Chat bot for therealcodeman. This bot uses the API interfaces for Twitch and Discord.
 
 ## Commands
-| Command            | Alternate | Paramaters             | Description                                                                                                                                                                | Example                                   |
+
+| Command            | Alternate | Parameters             | Description                                                                                                                                                                | Example                                   |
 |--------------------|-----------|------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------|
 | !help              |           |                        | Have the bot send a link to more advanced commands                                                                                                                         |                                           |
 | !raffle            |           |                        | Kick of a raffle during stream for a chance to win NEBS                                                                                                                    |                                           |
