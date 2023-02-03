@@ -1,6 +1,6 @@
 # cspell: disable
 """
-codemanbot.py: Interface with the Twitch chat via twitchio API.
+twitchbot.py: Interface with the Twitch chat via twitchio API.
 """
 __author__ = "Cody Deeran"
 __copyright__ = "Copyright 2023, codemanbot"
@@ -16,13 +16,40 @@ __contact__ = {
 
 import json
 from datetime import datetime
+import random
 import emoji
 import openai
 from twitchio.ext import commands
 from twitchio.message import Message
 
+# from dotenv import load_dotenv
 
-class CodemanBot(commands.Bot):
+
+EIGHT_BALL_REPSONSES = [
+    emoji.emojize(":green_circle: It is certain."),
+    emoji.emojize(":green_circle: It is decidedly so."),
+    emoji.emojize(":green_circle: Without a doubt."),
+    emoji.emojize(":green_circle: Yes definitely."),
+    emoji.emojize(":green_circle: You may rely on it."),
+    emoji.emojize(":green_circle: As I see it, yes."),
+    emoji.emojize(":green_circle: Most likely."),
+    emoji.emojize(":green_circle: Outlook good."),
+    emoji.emojize(":green_circle: Yes."),
+    emoji.emojize(":green_circle: Signs point to yes."),
+    emoji.emojize(":yellow_circle: Reply hazy, try again."),
+    emoji.emojize(":yellow_circle: Ask again later."),
+    emoji.emojize(":yellow_circle: Better not tell you now."),
+    emoji.emojize(":yellow_circle: Cannot predict now."),
+    emoji.emojize(":yellow_circle: Concentrate and ask again."),
+    emoji.emojize(":red_cricle: Don't count on it."),
+    emoji.emojize(":red_cricle: My reply is no."),
+    emoji.emojize(":red_cricle: My sources say no."),
+    emoji.emojize(":red_cricle: Outlook not so good."),
+    emoji.emojize(":red_cricle: Very doubtful."),
+]
+
+
+class TwitchBot(commands.Bot):
     """
     Twitch bot for therealcodeman
 
@@ -32,7 +59,7 @@ class CodemanBot(commands.Bot):
     def __init__(
         self,
         token: str,
-        client_secret: str,
+        client_id: str,
         prefix: str,
         channels: list[str],
         openai_key: str = None,
@@ -42,7 +69,7 @@ class CodemanBot(commands.Bot):
         # Initialize the bot
         super().__init__(
             token=token,
-            client_secret=client_secret,
+            client_secret=client_id,
             prefix=prefix,
             initial_channels=channels,
         )
@@ -50,6 +77,7 @@ class CodemanBot(commands.Bot):
         self.lifetime_deaths: int = 0
         self.session_chalked: int = 0
         self.lifetime_chalked: int = 0
+        self.dmz_squad_pr: int = 0
         self.recent_raffle: bool = False
         self.raffle_time: datetime = None
         self.raffle_cooldown_time: int = 15  # minutes
@@ -66,6 +94,7 @@ class CodemanBot(commands.Bot):
 
         self.lifetime_deaths = data["deaths"]
         self.lifetime_chalked = data["chalked"]
+        self.dmz_squad_pr = data["dmz_squad_pr_kills"]
 
         print(emoji.emojize(f"{self.nick} is up and running! :robot:"))
 
@@ -91,20 +120,56 @@ class CodemanBot(commands.Bot):
 
         # Check if message is a greeting message or if it is a @message
         content = message.content.lower()
-        contents = content.split()
-        if contents[0] == "hello" or contents[0] == "hi":
+        if content.split()[0] in [
+            "hello",
+            "hi",
+            "sup",
+            "what's up",
+            "whats up",
+            "what up",
+            "wat up",
+            "yo",
+        ]:
             message.content = f"!{message.content.lower()}"
-        elif contents[0] == f"@{self.nick}":
+        elif content.startswith(f"@{self.nick.lower()}"):
             message.content = f"!{message.content.lower()}"
-        elif contents[0] == "#treatsforgus":
+        elif content.startswith("#treatsforgus"):
             message.content = f"!{message.content.lower()}"
 
         # relay message
         await self.handle_commands(message)
 
+    @commands.command(name="8ball")
+    async def eight_ball(self, context: commands.Context):
+        """
+        Send the user a random response to their question.
+        Based on the standard responses from 8ball.
+
+        Args:
+            context (commands.Context): _description_
+        """
+        question = context.message.content.strip("!8ball")
+
+        if not question:
+            await context.reply(
+                "ummm... you need to ask me a question before I can answer."
+            )
+        else:
+            await context.reply(
+                emoji.emojize(
+                    f":pool_8_ball: says.... {random.choice(EIGHT_BALL_REPSONSES)}"
+                )
+            )
+
     @commands.command(name="troll")
     async def troll(self, context: commands.Context):
-        await context.reply(f"SHUT UP! @{context.author.name}")
+        """
+        Troll the Pocus_Jet user
+
+        Args:
+            context (commands.Context): Context Object
+        """
+        await context.reply("HELLO MUTHAFUCKA! HEY, HI, HOW YA DERRIN?!")
 
     @commands.command(name="hello")
     async def hello(self, context: commands.Context):
@@ -114,7 +179,7 @@ class CodemanBot(commands.Bot):
         Args:
             context (commands.Context): Context Object
         """
-        await context.reply(f"Hello {context.author.name}!")
+        await context.reply(f"Hello {context.author.mention}!")
 
     @commands.command(name="raffle")
     async def raffle(self, context: commands.Context):
@@ -136,7 +201,7 @@ class CodemanBot(commands.Bot):
                 self.recent_raffle = True
             else:
                 await context.send(
-                    f"I am sorry, @{context.author.name}, "
+                    f"I am sorry, {context.author.mention}, "
                     "raffle is currently in cool down for another "
                     f"{self.raffle_cooldown_time - elapsed_time} minute(s).",
                 )
@@ -172,6 +237,41 @@ class CodemanBot(commands.Bot):
                 f"{self.lifetime_deaths} times in his career.",
             )
         )
+
+    @commands.command(name="dmzpr")
+    async def update_dmz_pr(self, context: commands.Context):
+        """
+        Update the death stats
+
+        Args:
+            context (commands.Context): Context Object
+        """
+
+        dmz_pr = int(context.message.content.strip("!dmzpr"))
+
+        if dmz_pr <= self.dmz_squad_pr:
+            await context.reply(
+                f"I am sorry, {context.message.author.mention}. "
+                f"That does not be their current PR of ({self.dmz_squad_pr})"
+            )
+        else:
+            with open("data.json", "r", encoding="utf-8") as file:
+                data = json.load(file)
+
+            data["dmz_squad_pr_kills"] = dmz_pr
+
+            with open("data.json", "w", encoding="utf-8") as file:
+                file.write(json.dumps(data, indent=4))
+
+            await context.send(
+                emoji.emojize(
+                    f":skull: @{context.channel.name} and squad have beat their kill PR! "
+                    f"WAS: {self.dmz_squad_pr} and is "
+                    f"NOW: {dmz_pr}",
+                )
+            )
+
+            self.dmz_squad_pr = dmz_pr
 
     @commands.command(name="chalked")
     async def chalked(self, context: commands.Context):
@@ -227,7 +327,21 @@ class CodemanBot(commands.Bot):
             )
         )
 
-        await context.send("!redeem treatsforgus")
+        await context.reply(
+            "To give Gus a treat, please use the following command:\n!redeem treatsforgus"
+        )
+
+    @commands.command(name="discord")
+    async def discord(self, context: commands.Context):
+        """
+        Send the message to show the discord invite.
+
+        Args:
+            context (commands.Context): Context Object
+        """
+        await context.send(
+            emoji.emojize("Join CODEMAN's discord! https://discord.gg/z6qQ2JahYY")
+        )
 
     @commands.command(name="@therealcodemanbot")
     async def ai_response(self, context: commands.Context):
@@ -253,8 +367,10 @@ class CodemanBot(commands.Bot):
 
                 response = openai.Completion.create(
                     model="text-ada-001",
-                    prompt=f"In less than 50 words, {formatted_message}",
-                    max_tokens=75,
+                    prompt=f"{formatted_message}"
+                    if formatted_message[-1] == "?"
+                    else f"{formatted_message}?",
+                    max_tokens=35,
                     top_p=1,
                     frequency_penalty=0,
                     presence_penalty=0,
@@ -266,3 +382,62 @@ class CodemanBot(commands.Bot):
                 response = "Yes?..."
 
             await context.reply(response)
+
+    @commands.command(name="insultme")
+    async def insult_me(self, context: commands.Context):
+        """
+        Have the bot interact with the user via GPT-3
+
+        Args:
+            context (commands.Context): Context Object
+        """
+        if not self.openai_key:
+            await context.reply(
+                f"Sorry, @{context.channel.name} does not have GPT implemented."
+            )
+        else:
+            # Generation Parameters from OpenAI Playground
+            openai.api_key = self.openai_key
+
+            response = openai.Completion.create(
+                model="text-ada-001",
+                prompt="write an insult about me",
+                max_tokens=35,
+                top_p=1,
+                frequency_penalty=0,
+                presence_penalty=0,
+            )
+
+            response = str(response["choices"][0]["text"])
+
+            await context.reply(response)
+
+    # @commands.command(name="gamble", aliases=["roulette"])
+    # async def gamble_points(self, context: commands.Context):
+
+    #     message = context.message.content.split()
+
+    #     points = message[1]
+
+    #     random.seed(version=2)
+
+    #     number = random.randint(1, 100)
+
+    #     win = True if number > 50 else False
+
+    #     if win:
+    #         reply_message = emoji.emojize(
+    #             f":slot_machine: :game_dice: WOOOHOOO!!! {context.author.mention} "
+    #             + f"JUST WON {points}! :slot_machine: :game_dice:"
+    #             + "FeelsBadGuy FeelsBadGuy"
+    #         )
+    #         await context.reply(reply_message)
+    #         await context.reply(f"!addpoints {context.author.name} {points}")
+    #     else:
+    #         reply_message = emoji.emojize(
+    #             f":slot_machine: :game_dice: WOOOHOOO!!! {context.author.mention} "
+    #             + f"JUST WON {points}! :slot_machine: :game_dice:"
+    #             + "FeelsBadGuy FeelsBadGuy"
+    #         )
+    #         await context.reply(reply_message)
+    #         await context.reply(f"!addpoints {context.author.name} {points}")

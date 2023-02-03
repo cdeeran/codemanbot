@@ -14,21 +14,27 @@ __contact__ = {
     "Email": "dev@codydeeran.com",
 }
 
-
 import os
 from dotenv import load_dotenv
-from codemanbot import CodemanBot
+import discord
+from twitchbot import TwitchBot
+from discordbot import DiscordBot
+from botthread import BotThread
+import time
 
 # Load in the .env file
 load_dotenv(".env")
 
 # Constants from .env
 TOKEN = os.environ.get("TOKEN")
-CLIENT_SECRET = os.environ.get("CLIENT_SECRET")
+CLIENT_ID = os.environ.get("CLIENT_ID")
 NICKNAME = os.environ.get("NICKNAME")
 PREFIX = os.environ.get("PREFIX")
 CHANNEL = os.environ.get("CHANNEL")
+CHANNEL_URL = os.environ.get("CHANNEL_URL")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+DISCORD_SECRET = os.environ.get("DISCORD_SECRET")
+DISCORD_NOTIFICATION_CHANNEL_ID = os.environ.get("DISCORD_NOTIFICATION_CHANNEL_ID")
 
 
 def main():
@@ -36,17 +42,35 @@ def main():
     Entry point for the bot
     """
     # Initialize the bot
-    codemanbot = CodemanBot(
+    twitch_bot = TwitchBot(
         token=TOKEN,
-        client_secret=CLIENT_SECRET,
+        client_id=CLIENT_ID,
         prefix=PREFIX,
         channels=[CHANNEL],
         openai_key=OPENAI_API_KEY,
         logging=False,
     )
 
-    codemanbot.run()
+    discord_intents = discord.Intents.default()
+    discord_intents.message_content = True
+    discord_bot = DiscordBot(
+        intents=discord_intents,
+        twitch_url=CHANNEL_URL,
+        twitch_channel=CHANNEL,
+        notifications_channel_id=int(DISCORD_NOTIFICATION_CHANNEL_ID),
+    )
+
+    twitch_thread = BotThread(name="Twitch Bot", target=twitch_bot.run)
+    discord_thread = BotThread(
+        name="Discord Bot", target=discord_bot.run, key=DISCORD_SECRET
+    )
+
+    twitch_thread.start()
+    discord_thread.start()
+    twitch_thread.join()
+    discord_thread.join()
 
 
 if __name__ == "__main__":
+
     main()

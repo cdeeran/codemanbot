@@ -1,2 +1,23 @@
-# codemanbot
-Twitch chat bot for therealcodeman
+# ![codeman-logo](assets/hoodie-logo-white.png)
+
+![twitch](https://img.shields.io/badge/Twitch-9146FF?style=for-the-badge&label=therealcodeman&logo=twitch&logoColor=white?link=https://twitch.tv/therealcodeman)![youtube](https://img.shields.io/badge/YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white&label=therealcodeman)![twitter](https://img.shields.io/twitter/follow/therealcodeman_?label=therealcodeman&logo=twitter&style=for-the-badge)![discord](https://img.shields.io/discord/739203979267014729?label=codeman&logo=discord&style=for-the-badge)
+
+Chat bot for therealcodeman. This bot uses the API interfaces for Twitch and Discord.
+
+## Commands
+| Command            | Alternate | Paramaters             | Description                                                                                                                                                                | Example                                   |
+|--------------------|-----------|------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------|
+| !help              |           |                        | Have the bot send a link to more advanced commands                                                                                                                         |                                           |
+| !raffle            |           |                        | Kick of a raffle during stream for a chance to win NEBS                                                                                                                    |                                           |
+| !points            |           |                        | Check how many NEBS you have                                                                                                                                               |                                           |
+| !merch             |           |                        | Have the bot post the link to the merch store                                                                                                                              |                                           |
+| !discord           |           |                        | Have the bot post the invite link to the discord                                                                                                                           |                                           |
+| !songrequest       | !sr       | YOUTUBE_ID (required)  | Request a song to be played between games                                                                                                                                  | !sr dQw4w9WgXcQ                           |
+| @therealcodemanbot |           | Question (optional)    | Have the bot respond to you using Ai Text Generation. **NOTE** Responses are out of my control. Responses could be very inaccurate, inappropriate, derogatory, etc...      | @therealcodeman What is life?             |
+| !redeem            |           | item (required)        | Redeem an item from the stream store                                                                                                                                       | !redeem shimmy                            |
+| !contest           |           |                        | View the current available contest                                                                                                                                         |                                           |
+| !bet               |           | nebs (required)        | Bet on a contest using your nebulas                                                                                                                                        | !bet 1000                                 |
+| !slots             |           |                        | Instantly gamble 100 nebulas. Win == 200 nebulas.                                                                                                                          |                                           |
+| !roulette          | !gamble   | nebs or all (required) | Risk a specific amount of nebulas or bet the house to double your Nebulas                                                                                                  | !gamble (all\|1000)                       |
+| !insultme          |           |                        | Have the bot generate an insult using Ai Text Generation.  **NOTE** Responses are out of my control. Responses could be very inaccurate, inappropriate, derogatory, etc... |                                           |
+| !8ball             |           | Question (required)    | Ask the bot a question to be answered by the 8ball.   Bot will give [standard 8ball responses](https://en.wikipedia.org/wiki/Magic_8_Ball).                                | !8ball Will the squad extract this round? |
