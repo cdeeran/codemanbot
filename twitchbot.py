@@ -339,8 +339,19 @@ class TwitchBot(commands.Bot):
         Args:
             context (commands.Context): Context Object
         """
+        await context.send("Join CODEMAN's discord! https://discord.gg/z6qQ2JahYY")
+
+    @commands.command(name="commands")
+    async def command_help(self, context: commands.Context):
+        """
+        Send the message to show the commands for the bot.
+
+        Args:
+            context (commands.Context): Context Object
+        """
         await context.send(
-            emoji.emojize("Join CODEMAN's discord! https://discord.gg/z6qQ2JahYY")
+            "You can find the list of commands here on Github! "
+            "https://github.com/cdeeran/codemanbot/blob/0da51e45d9c4472c068756571acc11234ab95172/README.md"
         )
 
     @commands.command(name="@therealcodemanbot")
