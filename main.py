@@ -17,10 +17,9 @@ __contact__ = {
 import os
 from dotenv import load_dotenv
 import discord
-from twitchbot import TwitchBot
-from discordbot import DiscordBot
-from botthread import BotThread
-import time
+from src.twitchbot import TwitchBot
+from src.discordbot import DiscordBot
+from src.botthread import BotThread
 
 # Load in the .env file
 load_dotenv(".env")
@@ -35,18 +34,27 @@ CHANNEL_URL = os.environ.get("CHANNEL_URL")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 DISCORD_SECRET = os.environ.get("DISCORD_SECRET")
 DISCORD_NOTIFICATION_CHANNEL_ID = os.environ.get("DISCORD_NOTIFICATION_CHANNEL_ID")
+SPOTIFY_CLIENT_ID = os.environ.get("SPOTIFY_CLIENT_ID")
+SPOTIFY_CLIENT_SECRET = os.environ.get("SPOTIFY_CLIENT_SECRET")
+SPOTIFY_REDIRECT = os.environ.get("SPOTIFY_REDIRECT")
+SPOTIFY_PLAYBACK_DEVICE = os.environ.get("SPOTIFY_PLAYBACK_DEVICE")
 
 
 def main():
     """
     Entry point for the bot
     """
+
     # Initialize the bot
     twitch_bot = TwitchBot(
         token=TOKEN,
         client_id=CLIENT_ID,
         prefix=PREFIX,
         channels=[CHANNEL],
+        spotify_client_id=SPOTIFY_CLIENT_ID,
+        spotify_client_secret=SPOTIFY_CLIENT_SECRET,
+        spotify_device_name=SPOTIFY_PLAYBACK_DEVICE,
+        spotify_redirect=SPOTIFY_REDIRECT,
         openai_key=OPENAI_API_KEY,
         logging=False,
     )

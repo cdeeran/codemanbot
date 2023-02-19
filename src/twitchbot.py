@@ -21,9 +21,7 @@ import emoji
 import openai
 from twitchio.ext import commands
 from twitchio.message import Message
-
-# from dotenv import load_dotenv
-
+from .spotify import Spotify, SpotifyReturnCode
 
 EIGHT_BALL_REPSONSES = [
     emoji.emojize(":green_circle: It is certain."),
@@ -62,6 +60,10 @@ class TwitchBot(commands.Bot):
         client_id: str,
         prefix: str,
         channels: list[str],
+        spotify_client_id: str,
+        spotify_client_secret: str,
+        spotify_device_name: str,
+        spotify_redirect: str,
         openai_key: str = None,
         logging: bool = False,
     ) -> None:
@@ -73,6 +75,7 @@ class TwitchBot(commands.Bot):
             prefix=prefix,
             initial_channels=channels,
         )
+        self.songs_for_stream: list = []
         self.session_deaths: int = 0
         self.lifetime_deaths: int = 0
         self.session_chalked: int = 0
@@ -85,6 +88,12 @@ class TwitchBot(commands.Bot):
         self.logging: bool = logging
         self.pocus_troll: bool = False
         self.session_log = f"session_{datetime.now().strftime('%d-%m-%y-%H-%M-%S')}.log"
+        self.spotify_client = Spotify(
+            device_name=spotify_device_name,
+            client_id=spotify_client_id,
+            client_secret=spotify_client_secret,
+            redirect=spotify_redirect,
+        )
 
     async def event_ready(self):
         """Initialize the bot"""
@@ -96,7 +105,9 @@ class TwitchBot(commands.Bot):
         self.lifetime_chalked = data["chalked"]
         self.dmz_squad_pr = data["dmz_squad_pr_kills"]
 
-        print(emoji.emojize(f"{self.nick} is up and running! :robot:"))
+        print(
+            emoji.emojize(f"{self.nick} is up and running! :robot:", language="alias")
+        )
 
     async def event_message(self, message: Message):
         """
@@ -130,7 +141,7 @@ class TwitchBot(commands.Bot):
             "wat up",
             "yo",
         ]:
-            message.content = f"!{message.content.lower()}"
+            message.content = "!hello"
         elif content.startswith(f"@{self.nick.lower()}"):
             message.content = f"!{message.content.lower()}"
         elif content.startswith("#treatsforgus"):
@@ -157,7 +168,8 @@ class TwitchBot(commands.Bot):
         else:
             await context.reply(
                 emoji.emojize(
-                    f":pool_8_ball: says.... {random.choice(EIGHT_BALL_REPSONSES)}"
+                    f":pool_8_ball: says.... {random.choice(EIGHT_BALL_REPSONSES)}",
+                    language="alias",
                 )
             )
 
@@ -195,7 +207,9 @@ class TwitchBot(commands.Bot):
 
             elapsed_time = (current_time - self.raffle_time).total_seconds() // 60
             if elapsed_time >= self.raffle_cooldown_time:
-                await context.send(emoji.emojize("Okay! Let's do a raffle! :ticket:"))
+                await context.send(
+                    emoji.emojize("Okay! Let's do a raffle! :ticket:", language="alias")
+                )
                 await context.send("!raffle")
                 self.raffle_time = datetime.now()
                 self.recent_raffle = True
@@ -206,7 +220,9 @@ class TwitchBot(commands.Bot):
                     f"{self.raffle_cooldown_time - elapsed_time} minute(s).",
                 )
         else:
-            await context.send(emoji.emojize("Okay! Let's do a raffle! :ticket:"))
+            await context.send(
+                emoji.emojize("Okay! Let's do a raffle! :ticket:", language="alias")
+            )
             await context.send("!raffle")
             self.raffle_time = datetime.now()
             self.recent_raffle = True
@@ -235,6 +251,7 @@ class TwitchBot(commands.Bot):
                 f":skull: @{context.channel.name} has died "
                 f"{self.session_deaths} time(s) this session and "
                 f"{self.lifetime_deaths} times in his career.",
+                language="alias",
             )
         )
 
@@ -268,6 +285,7 @@ class TwitchBot(commands.Bot):
                     f":skull: @{context.channel.name} and squad have beat their kill PR! "
                     f"WAS: {self.dmz_squad_pr} and is "
                     f"NOW: {dmz_pr}",
+                    language="alias",
                 )
             )
 
@@ -296,6 +314,7 @@ class TwitchBot(commands.Bot):
             f":speech_balloon: @{context.channel.name} said "
             f"`I'm chalked` {self.session_chalked}"
             f"time(s) this session and {self.lifetime_chalked} times in his career.",
+            language="alias",
         )
 
     @commands.command(name="guscam")
@@ -309,7 +328,8 @@ class TwitchBot(commands.Bot):
         await context.send(
             emoji.emojize(
                 ":dog: :wolf: GIVE THE PEOPLE WHAT THEY WANT! "
-                "GUUUUUUS CAAAAAAAAM!!!!!!!! :dog: :wolf:"
+                "GUUUUUUS CAAAAAAAAM!!!!!!!! :dog: :wolf:",
+                language="alias",
             )
         )
 
@@ -323,7 +343,8 @@ class TwitchBot(commands.Bot):
         """
         await context.send(
             emoji.emojize(
-                ":dog: :wolf: GIVE THE GOOD BOY A GOD DAMN TREAT! :dog: :wolf:"
+                ":dog: :wolf: GIVE THE GOOD BOY A GOD DAMN TREAT! :dog: :wolf:",
+                language="alias",
             )
         )
 
@@ -394,6 +415,21 @@ class TwitchBot(commands.Bot):
 
             await context.reply(response)
 
+    @commands.command(name="lurk")
+    async def lurk(self, context: commands.Context):
+        """
+        Acknowledge the user is lurking and supporting the stream!
+
+        Args:
+            context (commands.Context): Context Object
+        """
+        await context.send(
+            emoji.emojize(
+                f"{context.author.mention} rodger that! Thank you for supporting! :red_heart:",
+                language="alias",
+            )
+        )
+
     @commands.command(name="insultme")
     async def insult_me(self, context: commands.Context):
         """
@@ -422,6 +458,31 @@ class TwitchBot(commands.Bot):
             response = str(response["choices"][0]["text"])
 
             await context.reply(response)
+
+    @commands.command(name="songrequest", aliases=["sr", "request"])
+    async def spotify_request(self, context: commands.Context):
+        """
+        Request a song on spotify
+
+        Args:
+            context (commands.Context): Context Object
+        """
+        request_url = context.message.content.split()[-1]
+
+        status = self.spotify_client.request_track(request_url)
+
+        if status != SpotifyReturnCode.SUCCESS:
+            await context.reply(
+                emoji.emojize(
+                    ":exclamation: Failed to add request. "
+                    f"Reason: {status.name} code: {status.value} :pensive:",
+                    language="alias",
+                )
+            )
+        else:
+            await context.reply(
+                emoji.emojize("Request added! :notes:", language="alias")
+            )
 
     # @commands.command(name="gamble", aliases=["roulette"])
     # async def gamble_points(self, context: commands.Context):
