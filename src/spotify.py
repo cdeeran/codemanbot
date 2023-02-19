@@ -160,7 +160,7 @@ class Spotify:
             return status
 
         for track in self._local_queue:
-            if track["url"] == requested_track:
+            if str(track["url"]) == requested_track:
                 return SpotifyReturnCode.REQUEST_ALREADY_IN_QUEUE
 
         return SpotifyReturnCode.SUCCESS
@@ -169,6 +169,22 @@ class Spotify:
 
         try:
             spotify_queue = self.spotify.queue()
+
+            # Get the current song playing so users don't request
+            # a song already being played
+            currently_playing = spotify_queue["currently_playing"]
+            current_track = {
+                "title": currently_playing["name"],
+                "artists": [artist["name"] for artist in currently_playing["artists"]],
+                "url": currently_playing["external_urls"]["spotify"],
+                "uri": currently_playing["uri"],
+            }
+            self._local_queue.append(current_track)
+
+            # Get the rest of the queue to ensure duplicates are not in there
+            # NOTE: This will only prevent duplicate requests from interaction with the bot.
+            # if the owner of the account has duplicate requests or
+            # manually adds a duplicate request there is nothing we can do.
             for request in spotify_queue["queue"]:
                 queued_track = {
                     "title": request["name"],
@@ -219,7 +235,8 @@ class Spotify:
         if valid_track != SpotifyReturnCode.SUCCESS:
             return valid_track
 
-        status = self.check_queue(requested_track)
+        # Spotify queue removes the ?si=*
+        status = self.check_queue(requested_track.split("?")[0])
 
         if status != SpotifyReturnCode.SUCCESS:
             return status
