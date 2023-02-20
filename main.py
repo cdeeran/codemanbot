@@ -11,6 +11,7 @@ __contact__ = {
     "Youtube": "https://youtube.com/therealcodeman",
     "Twitter": "https://twitter.com/therealcodeman_",
     "Discord": "https://discord.gg/BW34FuYfnK",
+    "Merch": "https://merch.streamelements.com/therealcodeman",
     "Email": "dev@codydeeran.com",
 }
 
@@ -38,6 +39,7 @@ SPOTIFY_CLIENT_ID = os.environ.get("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = os.environ.get("SPOTIFY_CLIENT_SECRET")
 SPOTIFY_REDIRECT = os.environ.get("SPOTIFY_REDIRECT")
 SPOTIFY_PLAYBACK_DEVICE = os.environ.get("SPOTIFY_PLAYBACK_DEVICE")
+WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
 
 
 def main():
@@ -55,6 +57,7 @@ def main():
         spotify_client_secret=SPOTIFY_CLIENT_SECRET,
         spotify_device_name=SPOTIFY_PLAYBACK_DEVICE,
         spotify_redirect=SPOTIFY_REDIRECT,
+        weather_api_key=WEATHER_API_KEY,
         openai_key=OPENAI_API_KEY,
         logging=False,
     )

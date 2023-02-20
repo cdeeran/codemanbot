@@ -11,6 +11,7 @@ __contact__ = {
     "Youtube": "https://youtube.com/therealcodeman",
     "Twitter": "https://twitter.com/therealcodeman_",
     "Discord": "https://discord.gg/BW34FuYfnK",
+    "Merch": "https://merch.streamelements.com/therealcodeman",
     "Email": "dev@codydeeran.com",
 }
 
@@ -19,7 +20,8 @@ from datetime import datetime
 import random
 import emoji
 import openai
-from twitchio.ext import commands
+import requests
+from twitchio.ext import commands, routines
 from twitchio.message import Message
 from .spotify import Spotify, SpotifyReturnCode
 
@@ -64,6 +66,7 @@ class TwitchBot(commands.Bot):
         spotify_client_secret: str,
         spotify_device_name: str,
         spotify_redirect: str,
+        weather_api_key: str,
         openai_key: str = None,
         logging: bool = False,
     ) -> None:
@@ -94,6 +97,7 @@ class TwitchBot(commands.Bot):
             client_secret=spotify_client_secret,
             redirect=spotify_redirect,
         )
+        self.weather_api_key: str = weather_api_key
 
     async def event_ready(self):
         """Initialize the bot"""
@@ -104,6 +108,9 @@ class TwitchBot(commands.Bot):
         self.lifetime_deaths = data["deaths"]
         self.lifetime_chalked = data["chalked"]
         self.dmz_squad_pr = data["dmz_squad_pr_kills"]
+        self.twitter_routine.start()
+        self.discord_routine.start()
+        self.merch_routine.start()
 
         print(
             emoji.emojize(f"{self.nick} is up and running! :robot:", language="alias")
@@ -134,12 +141,6 @@ class TwitchBot(commands.Bot):
         if content.split()[0] in [
             "hello",
             "hi",
-            "sup",
-            "what's up",
-            "whats up",
-            "what up",
-            "wat up",
-            "yo",
         ]:
             message.content = "!hello"
         elif content.startswith(f"@{self.nick.lower()}"):
@@ -173,16 +174,6 @@ class TwitchBot(commands.Bot):
                 )
             )
 
-    @commands.command(name="troll")
-    async def troll(self, context: commands.Context):
-        """
-        Troll the Pocus_Jet user
-
-        Args:
-            context (commands.Context): Context Object
-        """
-        await context.reply("HELLO MUTHAFUCKA! HEY, HI, HOW YA DERRIN?!")
-
     @commands.command(name="hello")
     async def hello(self, context: commands.Context):
         """
@@ -191,7 +182,29 @@ class TwitchBot(commands.Bot):
         Args:
             context (commands.Context): Context Object
         """
-        await context.reply(f"Hello {context.author.mention}!")
+        if not self.openai_key:
+            await context.reply(
+                f"Sorry, @{context.channel.name} does not have GPT implemented."
+            )
+        else:
+            # Generation Parameters from OpenAI Playground
+            openai.api_key = self.openai_key
+
+            prompt = f"Write a greeting to the user {context.author} thanking them for tuning into my twitch stream right now"
+
+            response = openai.Completion.create(
+                model="text-babbage-001",
+                prompt=prompt,
+                max_length=150,
+                top_p=1,
+                temperature=0.9,
+                frequency_penalty=0,
+                presence_penalty=0.6,
+            )
+
+            response = str(response["choices"][0]["text"])
+
+            await context.reply(response)
 
     @commands.command(name="raffle")
     async def raffle(self, context: commands.Context):
@@ -397,15 +410,20 @@ class TwitchBot(commands.Bot):
 
             if formatted_message is not None and formatted_message != "":
 
-                response = openai.Completion.create(
-                    model="text-ada-001",
-                    prompt=f"{formatted_message}"
+                prompt = (
+                    f"{formatted_message}"
                     if formatted_message[-1] == "?"
                     else f"{formatted_message}?",
-                    max_tokens=35,
+                )
+
+                response = openai.Completion.create(
+                    model="text-babbage-001",
+                    prompt=prompt,
+                    max_length=150,
                     top_p=1,
+                    temperature=0.9,
                     frequency_penalty=0,
-                    presence_penalty=0,
+                    presence_penalty=0.6,
                 )
 
                 response = str(response["choices"][0]["text"])
@@ -446,13 +464,16 @@ class TwitchBot(commands.Bot):
             # Generation Parameters from OpenAI Playground
             openai.api_key = self.openai_key
 
+            prompt = f"Generate an insulting reply to {context.author}'s prompt"
+
             response = openai.Completion.create(
-                model="text-ada-001",
-                prompt="write an insult about me",
-                max_tokens=35,
+                model="text-babbage-001",
+                prompt=prompt,
+                max_length=150,
                 top_p=1,
+                temperature=0.9,
                 frequency_penalty=0,
-                presence_penalty=0,
+                presence_penalty=0.6,
             )
 
             response = str(response["choices"][0]["text"])
@@ -484,32 +505,86 @@ class TwitchBot(commands.Bot):
                 emoji.emojize("Request added! :notes:", language="alias")
             )
 
-    # @commands.command(name="gamble", aliases=["roulette"])
-    # async def gamble_points(self, context: commands.Context):
+    @commands.command(name="socials")
+    async def socials(self, context: commands.Context):
+        """
+        Send people the socials
 
-    #     message = context.message.content.split()
+        Args:
+            context (commands.Context): Context Object
+        """
+        formatted_socials = emoji.emojize(
+            f":tv: YouTube: {__contact__['Youtube']}\n"
+            f":bird: Twitter: {__contact__['Twitter']}\n"
+            f"🤖 Discord: {__contact__['Discord']}",
+            language="alias",
+        )
 
-    #     points = message[1]
+        await context.send(formatted_socials)
 
-    #     random.seed(version=2)
+    @commands.command(name="weather")
+    async def weather(self, context: commands.Context):
+        """
+        Retrieve current weather information
 
-    #     number = random.randint(1, 100)
+        Args:
+            context (commands.Context): _description_
+        """
+        location = context.message.content.strip(context.command.name)
 
-    #     win = True if number > 50 else False
+        url = f"https://api.weatherapi.com/v1/forecast.json?key=57dd1eeea5374875a0131010232002&q={location}&aqi=no"
 
-    #     if win:
-    #         reply_message = emoji.emojize(
-    #             f":slot_machine: :game_dice: WOOOHOOO!!! {context.author.mention} "
-    #             + f"JUST WON {points}! :slot_machine: :game_dice:"
-    #             + "FeelsBadGuy FeelsBadGuy"
-    #         )
-    #         await context.reply(reply_message)
-    #         await context.reply(f"!addpoints {context.author.name} {points}")
-    #     else:
-    #         reply_message = emoji.emojize(
-    #             f":slot_machine: :game_dice: WOOOHOOO!!! {context.author.mention} "
-    #             + f"JUST WON {points}! :slot_machine: :game_dice:"
-    #             + "FeelsBadGuy FeelsBadGuy"
-    #         )
-    #         await context.reply(reply_message)
-    #         await context.reply(f"!addpoints {context.author.name} {points}")
+        response = requests.get(url)
+        data = response.json()
+
+        name = data["location"]["name"]
+        region = data["location"]["region"]
+        local_time = data["location"]["localtime"].split()[-1]
+        temp_f = data["current"]["temp_f"]
+        temp_c = data["current"]["temp_c"]
+        humidity = data["current"]["humidity"]
+        condition = data["current"]["condition"]["text"].title()
+        last_updated = data["current"]["last_updated"].split()[-1]
+
+        reply = (
+            f"Currently in {name}, {region} it is {local_time}. "
+            f"Weather data indicates that it is {temp_f}\u2109/{temp_c}\u2103. "
+            f"Conditions are {condition}. Humidity is {humidity}%. "
+            f"Data was last updated at {last_updated}."
+        )
+
+        await context.reply(reply)
+
+    @routines.routine(minutes=45)
+    async def twitter_routine(self):
+        """
+        routine to post the twitter link
+        """
+        message = (
+            "Follow therealcodeman on 🐦 Twitter! Shitposts, MEMES, Live notifications and more\n"
+            f"{__contact__['Twitter']}"
+        )
+        await self.get_channel("therealcodeman").send(message)
+
+    @routines.routine(minutes=30)
+    async def discord_routine(self):
+        """
+        routine to post the discord link
+        """
+        message = (
+            "Board the spaceship and join fellow Astronauts 🧑‍🚀👩‍🚀👨‍🚀 on this adventure!\n"
+            "Join the Discord for livestream notifications, contests, memes and more!\n"
+            f"{__contact__['Discord']}"
+        )
+
+        await self.get_channel("therealcodeman").send(message)
+
+    @routines.routine(minutes=60)
+    async def merch_routine(self):
+        """
+        routine to post the merch link
+        """
+        message = (
+            "🚨🚨🚨 MERCH ALERT 🚨🚨🚨\n" "👀😎🤯😛\n" f"Check it out 👉 {__contact__['Merch']}"
+        )
+        await self.get_channel("therealcodeman").send(message)
