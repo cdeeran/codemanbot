@@ -16,7 +16,6 @@ __contact__ = {
 }
 
 import os
-from threading import Timer
 from dotenv import load_dotenv
 import discord
 from src.twitchbot import TwitchBot

@@ -133,3 +133,5 @@ dmypy.json
 
 # Don't push anymore 
 data.json
+
+/player_overlay

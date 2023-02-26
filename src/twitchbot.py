@@ -21,7 +21,7 @@ import random
 import emoji
 import openai
 import requests
-from twitchio.ext import commands, routines
+from twitchio.ext import commands
 from twitchio.message import Message
 from .spotify import Spotify, SpotifyReturnCode
 
@@ -297,6 +297,21 @@ class TwitchBot(commands.Bot):
                 language="alias",
             )
         )
+
+    @commands.command(name="clearwins")
+    async def clear_wins(self, context: commands.Context):
+        """
+        Clears the session wins
+
+        Args:
+            context (commands.Context): Context Object
+        """
+        self.session_wins = 0
+
+        with open(SESSION_WINS_FILE, "w", encoding="utf-8") as file:
+            file.write(f"wins: {self.session_wins}")
+
+        await context.send("Session wins have been reset :)")
 
     @commands.command(name="dmzpr")
     async def update_dmz_pr(self, context: commands.Context):
