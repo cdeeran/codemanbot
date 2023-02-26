@@ -16,11 +16,13 @@ __contact__ = {
 }
 
 import os
+from threading import Timer
 from dotenv import load_dotenv
 import discord
 from src.twitchbot import TwitchBot
 from src.discordbot import DiscordBot
-from src.botthread import BotThread
+from src.botthread import BotThread, GeneralTimerThread
+from src.spotify import Spotify
 
 # Load in the .env file
 load_dotenv(".env")
@@ -47,16 +49,21 @@ def main():
     Entry point for the bot
     """
 
+    # Initialize the Spotify instance
+    spotify_instance = Spotify(
+        device_name=SPOTIFY_PLAYBACK_DEVICE,
+        client_id=SPOTIFY_CLIENT_ID,
+        client_secret=SPOTIFY_CLIENT_SECRET,
+        redirect=SPOTIFY_REDIRECT,
+    )
+
     # Initialize the bot
     twitch_bot = TwitchBot(
         token=TOKEN,
         client_id=CLIENT_ID,
         prefix=PREFIX,
         channels=[CHANNEL],
-        spotify_client_id=SPOTIFY_CLIENT_ID,
-        spotify_client_secret=SPOTIFY_CLIENT_SECRET,
-        spotify_device_name=SPOTIFY_PLAYBACK_DEVICE,
-        spotify_redirect=SPOTIFY_REDIRECT,
+        spotify_client=spotify_instance,
         weather_api_key=WEATHER_API_KEY,
         openai_key=OPENAI_API_KEY,
         logging=False,
@@ -76,10 +83,36 @@ def main():
         name="Discord Bot", target=discord_bot.run, key=DISCORD_SECRET
     )
 
+    spotify_update_timer = GeneralTimerThread(
+        name="Spotify Now Playing",
+        target=spotify_instance.update_spotify_stream_player,
+        interval_secs=10,
+    )
+
+    merch_timer = GeneralTimerThread(
+        name="merch timer", target=twitch_bot.merch_routine, interval_secs=1800
+    )
+
+    twitter_timer = GeneralTimerThread(
+        name="twitter timer", target=twitch_bot.twitter_routine, interval_secs=1200
+    )
+
+    discord_timer = GeneralTimerThread(
+        name="discord timer", target=twitch_bot.discord_routine, interval_secs=2700
+    )
+
     twitch_thread.start()
     discord_thread.start()
+    spotify_update_timer.start()
+    merch_timer.start()
+    twitter_timer.start()
+    discord_timer.start()
     twitch_thread.join()
     discord_thread.join()
+    spotify_update_timer.join()
+    merch_timer.join()
+    twitter_timer.join()
+    discord_timer.join()
 
 
 if __name__ == "__main__":

@@ -48,6 +48,10 @@ EIGHT_BALL_REPSONSES = [
     emoji.emojize(":red_cricle: Very doubtful."),
 ]
 
+STATS_FILE = "./data/total_stats.json"
+SESSION_DEATHS_FILE = "./data/session_deaths.txt"
+SESSION_WINS_FILE = "./data/session_wins.txt"
+
 
 class TwitchBot(commands.Bot):
     """
@@ -62,10 +66,7 @@ class TwitchBot(commands.Bot):
         client_id: str,
         prefix: str,
         channels: list[str],
-        spotify_client_id: str,
-        spotify_client_secret: str,
-        spotify_device_name: str,
-        spotify_redirect: str,
+        spotify_client: Spotify,
         weather_api_key: str,
         openai_key: str = None,
         logging: bool = False,
@@ -79,6 +80,8 @@ class TwitchBot(commands.Bot):
             initial_channels=channels,
         )
         self.songs_for_stream: list = []
+        self.session_wins: int = 0
+        self.lifetime_wins: int = 0
         self.session_deaths: int = 0
         self.lifetime_deaths: int = 0
         self.session_chalked: int = 0
@@ -91,26 +94,19 @@ class TwitchBot(commands.Bot):
         self.logging: bool = logging
         self.pocus_troll: bool = False
         self.session_log = f"session_{datetime.now().strftime('%d-%m-%y-%H-%M-%S')}.log"
-        self.spotify_client = Spotify(
-            device_name=spotify_device_name,
-            client_id=spotify_client_id,
-            client_secret=spotify_client_secret,
-            redirect=spotify_redirect,
-        )
+        self.spotify_client = spotify_client
         self.weather_api_key: str = weather_api_key
 
     async def event_ready(self):
         """Initialize the bot"""
 
-        with open("data.json", "r", encoding="utf-8") as file:
+        with open(STATS_FILE, "r", encoding="utf-8") as file:
             data = json.load(file)
 
+        self.lifetime_wins = data["wz_wins"]
         self.lifetime_deaths = data["deaths"]
         self.lifetime_chalked = data["chalked"]
         self.dmz_squad_pr = data["dmz_squad_pr_kills"]
-        self.twitter_routine.start()
-        self.discord_routine.start()
-        self.merch_routine.start()
 
         print(
             emoji.emojize(f"{self.nick} is up and running! :robot:", language="alias")
@@ -195,7 +191,7 @@ class TwitchBot(commands.Bot):
             response = openai.Completion.create(
                 model="text-babbage-001",
                 prompt=prompt,
-                max_length=150,
+                max_tokens=150,
                 top_p=1,
                 temperature=0.9,
                 frequency_penalty=0,
@@ -251,19 +247,53 @@ class TwitchBot(commands.Bot):
         self.session_deaths += 1
         self.lifetime_deaths += 1
 
-        with open("data.json", "r", encoding="utf-8") as file:
+        with open(STATS_FILE, "r", encoding="utf-8") as file:
             data = json.load(file)
 
         data["deaths"] = self.lifetime_deaths
 
-        with open("data.json", "w", encoding="utf-8") as file:
+        with open(STATS_FILE, "w", encoding="utf-8") as file:
             file.write(json.dumps(data, indent=4))
+
+        with open(SESSION_DEATHS_FILE, "w", encoding="utf-8") as file:
+            file.write(f"deaths: {self.session_deaths}")
 
         await context.send(
             emoji.emojize(
-                f":skull: @{context.channel.name} has died "
+                f":skull::skull::skull::skull::skull: @{context.channel.name} has died "
                 f"{self.session_deaths} time(s) this session and "
                 f"{self.lifetime_deaths} times in his career.",
+                language="alias",
+            )
+        )
+
+    @commands.command(name="win", aliases=["dub"])
+    async def win(self, context: commands.Context):
+        """
+        Update the win stats
+
+        Args:
+            context (commands.Context): Context Object
+        """
+        self.session_wins += 1
+        self.lifetime_wins += 1
+
+        with open(STATS_FILE, "r", encoding="utf-8") as file:
+            data = json.load(file)
+
+        data["total_wz_wins"] = self.lifetime_wins
+
+        with open(STATS_FILE, "w", encoding="utf-8") as file:
+            file.write(json.dumps(data, indent=4))
+
+        with open(SESSION_WINS_FILE, "w", encoding="utf-8") as file:
+            file.write(f"wins: {self.session_wins}")
+
+        await context.send(
+            emoji.emojize(
+                f":trophy::trophy::trophy::trophy::trophy::trophy:@{context.channel.name} has won "
+                f"{self.session_wins} time(s) this session and "
+                f"{self.lifetime_wins} times in his career.",
                 language="alias",
             )
         )
@@ -285,12 +315,12 @@ class TwitchBot(commands.Bot):
                 f"That does not be their current PR of ({self.dmz_squad_pr})"
             )
         else:
-            with open("data.json", "r", encoding="utf-8") as file:
+            with open(STATS_FILE, "r", encoding="utf-8") as file:
                 data = json.load(file)
 
             data["dmz_squad_pr_kills"] = dmz_pr
 
-            with open("data.json", "w", encoding="utf-8") as file:
+            with open(STATS_FILE, "w", encoding="utf-8") as file:
                 file.write(json.dumps(data, indent=4))
 
             await context.send(
@@ -315,12 +345,12 @@ class TwitchBot(commands.Bot):
         self.session_chalked += 1
         self.lifetime_chalked += 1
 
-        with open("data.json", "r", encoding="utf-8") as file:
+        with open(STATS_FILE, "r", encoding="utf-8") as file:
             data = json.load(file)
 
         data["chalked"] = self.lifetime_chalked
 
-        with open("data.json", "w", encoding="utf-8") as file:
+        with open(STATS_FILE, "w", encoding="utf-8") as file:
             file.write(json.dumps(data, indent=4))
 
         await context.send(
@@ -419,7 +449,7 @@ class TwitchBot(commands.Bot):
                 response = openai.Completion.create(
                     model="text-babbage-001",
                     prompt=prompt,
-                    max_length=150,
+                    max_tokens=150,
                     top_p=1,
                     temperature=0.9,
                     frequency_penalty=0,
@@ -469,7 +499,7 @@ class TwitchBot(commands.Bot):
             response = openai.Completion.create(
                 model="text-babbage-001",
                 prompt=prompt,
-                max_length=150,
+                max_tokens=150,
                 top_p=1,
                 temperature=0.9,
                 frequency_penalty=0,
@@ -555,7 +585,6 @@ class TwitchBot(commands.Bot):
 
         await context.reply(reply)
 
-    @routines.routine(minutes=45)
     async def twitter_routine(self):
         """
         routine to post the twitter link
@@ -566,7 +595,6 @@ class TwitchBot(commands.Bot):
         )
         await self.get_channel("therealcodeman").send(message)
 
-    @routines.routine(minutes=30)
     async def discord_routine(self):
         """
         routine to post the discord link
@@ -579,7 +607,6 @@ class TwitchBot(commands.Bot):
 
         await self.get_channel("therealcodeman").send(message)
 
-    @routines.routine(minutes=60)
     async def merch_routine(self):
         """
         routine to post the merch link
