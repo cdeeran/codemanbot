@@ -13,6 +13,8 @@ __contact__ = {
     "Email": "dev@codydeeran.com",
 }
 import json
+import shutil
+import requests
 from typing import Any
 from enum import Enum
 from datetime import datetime
@@ -61,6 +63,7 @@ class Spotify:
             f"spotify_session_{datetime.now().strftime('%d-%m-%y-%H-%M-%S')}.log"
         )
         self._establish_connection()
+        self._previous_track_id: str = ""
 
     def _find_device_id(self) -> Any:
         """
@@ -260,3 +263,45 @@ class Spotify:
                 with open(f"./.logs/{self.session_log}", "a+", encoding="utf-8") as log:
                     log.write(error.with_traceback())
                 return SpotifyReturnCode.FAILED_TO_BEGIN_PLAYBACK
+
+    def update_spotify_stream_player(self):
+        """
+        example
+        """
+        spotify_queue = self.spotify.queue()
+
+        # Get the current song playing so users don't request
+        # a song already being played
+        currently_playing = spotify_queue["currently_playing"]
+        current_track = {
+            "artwork_url": currently_playing["album"]["images"][1]["url"],
+            "title": currently_playing["name"],
+            "artists": [artist["name"] for artist in currently_playing["artists"]],
+            "duration": currently_playing["duration_ms"],
+            "id": currently_playing["id"],
+        }
+
+        if current_track["id"] != self._previous_track_id:
+
+            response = requests.get(
+                current_track["artwork_url"], stream=True, timeout=5
+            )
+
+            if response.status_code == 200:
+                with open("./player_overlay/album_artwork.png", "wb") as file:
+                    shutil.copyfileobj(response.raw, file)
+            else:
+                print(f"Could not download album artwork for: {current_track['title']}")
+
+            # Delete temporary file
+            del response
+
+            with open("./player_overlay/song_title.txt", "w", encoding="utf-8") as file:
+                file.write(current_track["title"])
+
+            with open(
+                "./player_overlay/song_artist.txt", "w", encoding="utf-8"
+            ) as file:
+                file.write(" | ".join(current_track["artists"]))
+
+            self._previous_track_id = current_track["id"]
