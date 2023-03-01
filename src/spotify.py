@@ -268,40 +268,54 @@ class Spotify:
         """
         example
         """
-        spotify_queue = self.spotify.queue()
+        try:
 
-        # Get the current song playing so users don't request
-        # a song already being played
-        currently_playing = spotify_queue["currently_playing"]
-        current_track = {
-            "artwork_url": currently_playing["album"]["images"][1]["url"],
-            "title": currently_playing["name"],
-            "artists": [artist["name"] for artist in currently_playing["artists"]],
-            "duration": currently_playing["duration_ms"],
-            "id": currently_playing["id"],
-        }
+            # Check that spotify is not paused or down before
+            # attempting to grab the queue
+            if self.spotify.current_playback() is not None:
 
-        if current_track["id"] != self._previous_track_id:
+                spotify_queue = self.spotify.queue()
 
-            response = requests.get(
-                current_track["artwork_url"], stream=True, timeout=5
-            )
+                # Get the current song playing so users don't request
+                # a song already being played
+                currently_playing = spotify_queue["currently_playing"]
+                current_track = {
+                    "artwork_url": currently_playing["album"]["images"][1]["url"],
+                    "title": currently_playing["name"],
+                    "artists": [
+                        artist["name"] for artist in currently_playing["artists"]
+                    ],
+                    "duration": currently_playing["duration_ms"],
+                    "id": currently_playing["id"],
+                }
 
-            if response.status_code == 200:
-                with open("./player_overlay/album_artwork.png", "wb") as file:
-                    shutil.copyfileobj(response.raw, file)
-            else:
-                print(f"Could not download album artwork for: {current_track['title']}")
+                if current_track["id"] != self._previous_track_id:
 
-            # Delete temporary file
-            del response
+                    response = requests.get(
+                        current_track["artwork_url"], stream=True, timeout=5
+                    )
 
-            with open("./player_overlay/song_title.txt", "w", encoding="utf-8") as file:
-                file.write(current_track["title"])
+                    if response.status_code == 200:
+                        with open("./player_overlay/album_artwork.png", "wb") as file:
+                            shutil.copyfileobj(response.raw, file)
+                    else:
+                        print(
+                            f"Could not download album artwork for: {current_track['title']}"
+                        )
 
-            with open(
-                "./player_overlay/song_artist.txt", "w", encoding="utf-8"
-            ) as file:
-                file.write(" | ".join(current_track["artists"]))
+                    # Delete temporary file
+                    del response
 
-            self._previous_track_id = current_track["id"]
+                    with open(
+                        "./player_overlay/song_title.txt", "w", encoding="utf-8"
+                    ) as file:
+                        file.write(current_track["title"])
+
+                    with open(
+                        "./player_overlay/song_artist.txt", "w", encoding="utf-8"
+                    ) as file:
+                        file.write(" | ".join(current_track["artists"]))
+
+                    self._previous_track_id = current_track["id"]
+        except Exception as error:
+            print(f"{error}")
