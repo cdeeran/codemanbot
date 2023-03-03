@@ -21,7 +21,7 @@ import random
 import emoji
 import openai
 import requests
-from twitchio.ext import commands
+from twitchio.ext import commands, routines
 from twitchio.message import Message
 from .spotify import Spotify, SpotifyReturnCode
 
@@ -112,6 +112,11 @@ class TwitchBot(commands.Bot):
             emoji.emojize(f"{self.nick} is up and running! :robot:", language="alias")
         )
 
+        # Start the routines
+        self.twitter_routine.start()
+        self.discord_routine.start()
+        self.merch_routine.start()
+
     async def event_message(self, message: Message):
         """
         Read in message from chat
@@ -186,19 +191,20 @@ class TwitchBot(commands.Bot):
             # Generation Parameters from OpenAI Playground
             openai.api_key = self.openai_key
 
-            prompt = f"Write a greeting to the user {context.author} thanking them for tuning into my twitch stream right now"
+            messages = [
+                {
+                    "role": "system",
+                    "content": "You are a Twitch bot. You provide a unique welcome reply to each user and thank them for joining my Twitch stream.",
+                },
+                {"role": "user", "content": context.message.content},
+            ]
 
-            response = openai.Completion.create(
-                model="text-babbage-001",
-                prompt=prompt,
-                max_tokens=150,
-                top_p=1,
-                temperature=0.9,
-                frequency_penalty=0,
-                presence_penalty=0.6,
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=messages,
             )
 
-            response = str(response["choices"][0]["text"])
+            response = str(response["choices"][0]["message"]["content"])
 
             await context.reply(response)
 
@@ -455,23 +461,29 @@ class TwitchBot(commands.Bot):
 
             if formatted_message is not None and formatted_message != "":
 
-                prompt = (
-                    f"{formatted_message}"
-                    if formatted_message[-1] == "?"
-                    else f"{formatted_message}?",
+                messages = [
+                    {
+                        "role": "system",
+                        "content": "You are a Twitch bot that is over the legal age of 18. Trolling, explict content and language is allowed as it is an over 18 channel.",
+                    },
+                    {
+                        "role": "assistant",
+                        "content": "lmao look at this fucking noob! Why to get absolutley #wrecked! Hold this L broski! hahaha",
+                    },
+                    {
+                        "role": "user",
+                        "content": "lmao! @therealcodemanbot that was funny as fuck! Love the troll man! Let's keeping talking more shit!",
+                    },
+                    {"role": "assistant", "content": "okay! lfg!!! KEKW"},
+                    {"role": "user", "content": formatted_message},
+                ]
+
+                response = openai.ChatCompletion.create(
+                    model="gpt-3.5-turbo",
+                    messages=messages,
                 )
 
-                response = openai.Completion.create(
-                    model="text-babbage-001",
-                    prompt=prompt,
-                    max_tokens=150,
-                    top_p=1,
-                    temperature=0.9,
-                    frequency_penalty=0,
-                    presence_penalty=0.6,
-                )
-
-                response = str(response["choices"][0]["text"])
+                response = str(response["choices"][0]["message"]["content"])
 
             else:
                 response = "Yes?..."
@@ -509,19 +521,24 @@ class TwitchBot(commands.Bot):
             # Generation Parameters from OpenAI Playground
             openai.api_key = self.openai_key
 
-            prompt = f"Generate an insulting reply to {context.author}'s prompt"
+            messages = [
+                {
+                    "role": "system",
+                    "content": "You are a bully, a comedian, a very funny person, a brilliant jokester.",
+                },
+                {
+                    "role": "assistant",
+                    "content": "Shall we play a game of who has the best instult?",
+                },
+                {"role": "user", "content": "Yes! You go first!"},
+            ]
 
-            response = openai.Completion.create(
-                model="text-babbage-001",
-                prompt=prompt,
-                max_tokens=150,
-                top_p=1,
-                temperature=0.9,
-                frequency_penalty=0,
-                presence_penalty=0.6,
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=messages,
             )
 
-            response = str(response["choices"][0]["text"])
+            response = str(response["choices"][0]["message"]["content"])
 
             await context.reply(response)
 
@@ -600,16 +617,18 @@ class TwitchBot(commands.Bot):
 
         await context.reply(reply)
 
+    @routines.routine(minutes=45)
     async def twitter_routine(self):
         """
         routine to post the twitter link
         """
         message = (
-            "Follow therealcodeman on 🐦 Twitter! Shitposts, MEMES, Live notifications and more\n"
+            "Follow therealcodeman on 🐦 Twitter! 💩 posts, MEMES, Live notifications and more\n"
             f"{__contact__['Twitter']}"
         )
         await self.get_channel("therealcodeman").send(message)
 
+    @routines.routine(minutes=60)
     async def discord_routine(self):
         """
         routine to post the discord link
@@ -622,6 +641,7 @@ class TwitchBot(commands.Bot):
 
         await self.get_channel("therealcodeman").send(message)
 
+    @routines.routine(minutes=30)
     async def merch_routine(self):
         """
         routine to post the merch link

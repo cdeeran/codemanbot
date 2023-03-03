@@ -131,7 +131,5 @@ dmypy.json
 # Client Secrets
 .env
 
-# Don't push anymore 
-data.json
-
 /player_overlay
+/data
