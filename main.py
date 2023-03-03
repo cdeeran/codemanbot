@@ -85,33 +85,15 @@ def main():
     spotify_update_timer = GeneralTimerThread(
         name="Spotify Now Playing",
         target=spotify_instance.update_spotify_stream_player,
-        interval_secs=10,
-    )
-
-    merch_timer = GeneralTimerThread(
-        name="merch timer", target=twitch_bot.merch_routine, interval_secs=1800
-    )
-
-    twitter_timer = GeneralTimerThread(
-        name="twitter timer", target=twitch_bot.twitter_routine, interval_secs=1200
-    )
-
-    discord_timer = GeneralTimerThread(
-        name="discord timer", target=twitch_bot.discord_routine, interval_secs=2700
+        interval=10,
     )
 
     twitch_thread.start()
     discord_thread.start()
     spotify_update_timer.start()
-    merch_timer.start()
-    twitter_timer.start()
-    discord_timer.start()
     twitch_thread.join()
     discord_thread.join()
     spotify_update_timer.join()
-    merch_timer.join()
-    twitter_timer.join()
-    discord_timer.join()
 
 
 if __name__ == "__main__":

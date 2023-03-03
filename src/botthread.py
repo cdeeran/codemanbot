@@ -19,11 +19,11 @@ class BotThread(Thread):
 
 
 class GeneralTimerThread(Thread):
-    def __init__(self, name: str, target, interval_secs: int):
+    def __init__(self, name: str, target, interval: int):
         Thread.__init__(self)
         self.name: str = name
         self.target = target
-        self.interval = interval_secs
+        self.interval = interval
         self.daemon = True
 
     def run(self):

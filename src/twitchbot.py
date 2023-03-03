@@ -21,7 +21,7 @@ import random
 import emoji
 import openai
 import requests
-from twitchio.ext import commands
+from twitchio.ext import commands, routines
 from twitchio.message import Message
 from .spotify import Spotify, SpotifyReturnCode
 
@@ -111,6 +111,11 @@ class TwitchBot(commands.Bot):
         print(
             emoji.emojize(f"{self.nick} is up and running! :robot:", language="alias")
         )
+
+        # Start the routines
+        self.twitter_routine.start()
+        self.discord_routine.start()
+        self.merch_routine.start()
 
     async def event_message(self, message: Message):
         """
@@ -612,16 +617,18 @@ class TwitchBot(commands.Bot):
 
         await context.reply(reply)
 
+    @routines.routine(minutes=45)
     async def twitter_routine(self):
         """
         routine to post the twitter link
         """
         message = (
-            "Follow therealcodeman on 🐦 Twitter! Shitposts, MEMES, Live notifications and more\n"
+            "Follow therealcodeman on 🐦 Twitter! 💩 posts, MEMES, Live notifications and more\n"
             f"{__contact__['Twitter']}"
         )
         await self.get_channel("therealcodeman").send(message)
 
+    @routines.routine(minutes=60)
     async def discord_routine(self):
         """
         routine to post the discord link
@@ -634,6 +641,7 @@ class TwitchBot(commands.Bot):
 
         await self.get_channel("therealcodeman").send(message)
 
+    @routines.routine(minutes=30)
     async def merch_routine(self):
         """
         routine to post the merch link
