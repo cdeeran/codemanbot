@@ -21,8 +21,10 @@ import random
 import emoji
 import openai
 import requests
+from queue import Queue
 from twitchio.ext import commands, routines
 from twitchio.message import Message
+from twitchio.errors import InvalidContent
 from .spotify import Spotify, SpotifyReturnCode
 
 EIGHT_BALL_REPSONSES = [
@@ -92,7 +94,6 @@ class TwitchBot(commands.Bot):
         self.raffle_cooldown_time: int = 15  # minutes
         self.openai_key: str = openai_key
         self.logging: bool = logging
-        self.pocus_troll: bool = False
         self.session_log = f"session_{datetime.now().strftime('%d-%m-%y-%H-%M-%S')}.log"
         self.spotify_client = spotify_client
         self.weather_api_key: str = weather_api_key
@@ -128,10 +129,6 @@ class TwitchBot(commands.Bot):
         # Ignore them
         if message.echo:
             return
-
-        if not self.pocus_troll and "pocus_jet" in message.author.name.lower():
-            message.content = "!troll"
-            self.pocus_troll = True
 
         if self.logging:
             with open(f"./.logs/{self.session_log}", "a+", encoding="utf-8") as log:
@@ -464,7 +461,7 @@ class TwitchBot(commands.Bot):
                 messages = [
                     {
                         "role": "system",
-                        "content": "You are a Twitch bot that is over the legal age of 18. Trolling, explict content and language is allowed as it is an over 18 channel.",
+                        "content": "You are a Twitch bot that is over the legal age of 21. Trolling, explict content and language is allowed as it is an over 18 channel",
                     },
                     {
                         "role": "assistant",
@@ -479,16 +476,37 @@ class TwitchBot(commands.Bot):
                 ]
 
                 response = openai.ChatCompletion.create(
-                    model="gpt-3.5-turbo",
-                    messages=messages,
+                    model="gpt-3.5-turbo", messages=messages
                 )
 
                 response = str(response["choices"][0]["message"]["content"])
 
-            else:
-                response = "Yes?..."
+                try:
+                    await context.reply(response)
 
-            await context.reply(response)
+                except InvalidContent as _:
+
+                    words = response.split()
+
+                    responses = Queue()
+
+                    temp = ""
+                    for word in words:
+                        if len(temp) + len(word) < 450:
+                            temp += f"{word} "
+                        else:
+                            responses.put(temp)
+                            temp = ""
+
+                    counter = 1
+                    size = responses.qsize()
+                    while not responses.empty():
+                        await context.reply(
+                            f"REPLY ({counter}/{size}): {responses.get()}"
+                        )
+                        counter += 1
+            else:
+                await context.reply("Yes?.")
 
     @commands.command(name="lurk")
     async def lurk(self, context: commands.Context):
