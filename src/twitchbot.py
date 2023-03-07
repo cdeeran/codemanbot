@@ -116,7 +116,7 @@ class TwitchBot(commands.Bot):
         # Start the routines
         self.twitter_routine.start()
         self.discord_routine.start()
-        self.merch_routine.start()
+        # self.merch_routine.start()
 
     async def event_message(self, message: Message):
         """
@@ -659,12 +659,12 @@ class TwitchBot(commands.Bot):
 
         await self.get_channel("therealcodeman").send(message)
 
-    @routines.routine(minutes=30)
-    async def merch_routine(self):
-        """
-        routine to post the merch link
-        """
-        message = (
-            "🚨🚨🚨 MERCH ALERT 🚨🚨🚨\n" "👀😎🤯😛\n" f"Check it out 👉 {__contact__['Merch']}"
-        )
-        await self.get_channel("therealcodeman").send(message)
+    # @routines.routine(minutes=30)
+    # async def merch_routine(self):
+    #     """
+    #     routine to post the merch link
+    #     """
+    #     message = (
+    #         "🚨🚨🚨 MERCH ALERT 🚨🚨🚨\n" "👀😎🤯😛\n" f"Check it out 👉 {__contact__['Merch']}"
+    #     )
+    #     await self.get_channel("therealcodeman").send(message)
