@@ -309,12 +309,13 @@ class Spotify:
                     with open(
                         "./player_overlay/song_title.txt", "w", encoding="utf-8"
                     ) as file:
-                        file.write(current_track["title"])
+                        file.write(current_track["title"] + " " * 10)
 
                     with open(
                         "./player_overlay/song_artist.txt", "w", encoding="utf-8"
                     ) as file:
                         file.write(" | ".join(current_track["artists"]))
+                        file.write(" " * 5)
 
                     self._previous_track_id = current_track["id"]
         except Exception as error:

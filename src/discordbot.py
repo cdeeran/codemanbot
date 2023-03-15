@@ -49,7 +49,7 @@ class DiscordBot(Client):
         """
         Print that the bot is up and running
         """
-        print(f"{self.user} is now running!")
+        print(f"{self.user} is now up and running on Discord!")
 
     async def on_message(self, message: Message):
         """

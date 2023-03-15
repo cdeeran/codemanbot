@@ -27,7 +27,7 @@ from src.spotify import Spotify
 load_dotenv(".env")
 
 # Constants from .env
-TOKEN = os.environ.get("TOKEN")
+TOKEN = os.environ.get("TMI_TOKEN")
 CLIENT_ID = os.environ.get("CLIENT_ID")
 NICKNAME = os.environ.get("NICKNAME")
 PREFIX = os.environ.get("PREFIX")

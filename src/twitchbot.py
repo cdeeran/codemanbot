@@ -18,10 +18,10 @@ __contact__ = {
 import json
 from datetime import datetime
 import random
+from queue import Queue
 import emoji
 import openai
 import requests
-from queue import Queue
 from twitchio.ext import commands, routines
 from twitchio.message import Message
 from twitchio.errors import InvalidContent
@@ -81,6 +81,7 @@ class TwitchBot(commands.Bot):
             prefix=prefix,
             initial_channels=channels,
         )
+        self.channels = channels
         self.songs_for_stream: list = []
         self.session_wins: int = 0
         self.lifetime_wins: int = 0
@@ -110,7 +111,9 @@ class TwitchBot(commands.Bot):
         self.dmz_squad_pr = data["dmz_squad_pr_kills"]
 
         print(
-            emoji.emojize(f"{self.nick} is up and running! :robot:", language="alias")
+            emoji.emojize(
+                f"{self.nick} is up and running on Twitch! :robot:", language="alias"
+            )
         )
 
         # Start the routines
