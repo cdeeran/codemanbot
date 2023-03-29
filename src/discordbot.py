@@ -23,7 +23,7 @@ from discord import File
 import emoji
 
 
-class DiscordBot(Client):
+class CodemanDiscordBot(Client):
     """
     Discord Bot
 

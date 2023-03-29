@@ -11,21 +11,22 @@ __contact__ = {
     "Youtube": "https://youtube.com/therealcodeman",
     "Twitter": "https://twitter.com/therealcodeman_",
     "Discord": "https://discord.gg/BW34FuYfnK",
-    "Merch": "https://merch.streamelements.com/therealcodeman",
+    # "Merch": "https://merch.streamelements.com/therealcodeman",
     "Email": "dev@codydeeran.com",
 }
 
-import json
-from datetime import datetime
+import asyncio
 import random
 from queue import Queue
+from datetime import datetime
+import requests
 import emoji
 import openai
-import requests
-from twitchio.ext import commands, routines
-from twitchio.message import Message
-from twitchio.errors import InvalidContent
-from .spotify import Spotify, SpotifyReturnCode
+from twitchAPI import Twitch
+from twitchAPI.oauth import UserAuthenticator
+from twitchAPI.types import AuthScope, ChatEvent
+from twitchAPI.chat import Chat, EventData, ChatMessage, ChatSub, ChatCommand
+from .spotify import SpotifyClient, SpotifyReturnCode
 
 EIGHT_BALL_REPSONSES = [
     emoji.emojize(":green_circle: It is certain."),
@@ -43,19 +44,26 @@ EIGHT_BALL_REPSONSES = [
     emoji.emojize(":yellow_circle: Better not tell you now."),
     emoji.emojize(":yellow_circle: Cannot predict now."),
     emoji.emojize(":yellow_circle: Concentrate and ask again."),
-    emoji.emojize(":red_cricle: Don't count on it."),
-    emoji.emojize(":red_cricle: My reply is no."),
-    emoji.emojize(":red_cricle: My sources say no."),
-    emoji.emojize(":red_cricle: Outlook not so good."),
-    emoji.emojize(":red_cricle: Very doubtful."),
+    emoji.emojize(":red_circle: Don't count on it."),
+    emoji.emojize(":red_circle: My reply is no."),
+    emoji.emojize(":red_circle: My sources say no."),
+    emoji.emojize(":red_circle: Outlook not so good."),
+    emoji.emojize(":red_circle: Very doubtful."),
 ]
 
 STATS_FILE = "./data/total_stats.json"
 SESSION_DEATHS_FILE = "./data/session_deaths.txt"
 SESSION_WINS_FILE = "./data/session_wins.txt"
+USER_SCOPES = [
+    AuthScope.CHAT_READ,
+    AuthScope.CHAT_EDIT,
+    AuthScope.CLIPS_EDIT,
+    AuthScope.BITS_READ,
+    AuthScope.CHANNEL_MODERATE,
+]
 
 
-class TwitchBot(commands.Bot):
+class CodemanTwitchBot:
     """
     Twitch bot for therealcodeman
 
@@ -64,128 +72,159 @@ class TwitchBot(commands.Bot):
 
     def __init__(
         self,
-        token: str,
-        client_id: str,
+        bot_name: str,
+        twitch_tmi_token: str,
+        twitch_client_id: str,
+        twitch_client_secret: str,
         prefix: str,
-        channels: list[str],
-        spotify_client: Spotify,
+        channel: dict,
         weather_api_key: str,
+        spotify_instance: SpotifyClient,
+        logging_path: str,
         openai_key: str = None,
         logging: bool = False,
     ) -> None:
 
         # Initialize the bot
-        super().__init__(
-            token=token,
-            client_secret=client_id,
-            prefix=prefix,
-            initial_channels=channels,
-        )
-        self.channels = channels
+        self.twitch_tmi_token: str = twitch_tmi_token
+        self.twitch_client_id: str = twitch_client_id
+        self.twitch_client_secret: str = twitch_client_secret
+        self.twitch: Twitch = None
+        self.bot_name: str = bot_name
+        self.chat_prefix: str = prefix
+        self.channel: dict = channel
         self.songs_for_stream: list = []
         self.session_wins: int = 0
-        self.lifetime_wins: int = 0
-        self.session_deaths: int = 0
-        self.lifetime_deaths: int = 0
-        self.session_chalked: int = 0
-        self.lifetime_chalked: int = 0
-        self.dmz_squad_pr: int = 0
         self.recent_raffle: bool = False
         self.raffle_time: datetime = None
         self.raffle_cooldown_time: int = 15  # minutes
         self.openai_key: str = openai_key
+        self.logging_path: str = logging_path
         self.logging: bool = logging
-        self.session_log = f"session_{datetime.now().strftime('%d-%m-%y-%H-%M-%S')}.log"
-        self.spotify_client = spotify_client
+        self.session_log: str = (
+            f"session_{datetime.now().strftime('%d-%m-%y-%H-%M-%S')}.log"
+        )
+        self.spotify_client: SpotifyClient = spotify_instance
         self.weather_api_key: str = weather_api_key
 
-    async def event_ready(self):
+    # this is where we set up the bot
+    async def run(self):
+        """
+        run the twitchbot
+        """
+        # set up twitch api instance and add user authentication with some scopes
+        self.twitch = await Twitch(self.twitch_client_id, self.twitch_client_secret)
+        auth = UserAuthenticator(self.twitch, USER_SCOPES)
+        user_auth_token, refresh_token = await auth.authenticate()
+        await self.twitch.set_user_authentication(
+            user_auth_token, USER_SCOPES, refresh_token
+        )
+
+        # create chat instance
+        chat = await Chat(self.twitch)
+
+        chat.set_prefix(self.chat_prefix)
+
+        # register the handlers for the events you want
+
+        # listen to when the bot is done starting up and ready to join channels
+        chat.register_event(ChatEvent.READY, self.on_ready)
+
+        # listen to chat messages
+        chat.register_event(ChatEvent.MESSAGE, self.on_message)
+
+        # listen to channel subscriptions
+        chat.register_event(ChatEvent.SUB, self.on_sub)
+
+        # You can directly register commands and their handlers,
+        # this will register the !reply command
+        # chat.register_command("reply", self.test_command)
+
+        chat.register_command(
+            "clip", self.clip
+        )  # Works when LIVE only. Can't seem to add a title though...
+        chat.register_command("lurk", self.lurk)
+        chat.register_command("8ball", self.eight_ball)
+        chat.register_command("win", self.win)
+        chat.register_command("clearwins", self.clear_wins)
+        chat.register_command("help", self.help)
+        chat.register_command("discord", self.discord)
+        chat.register_command("socials", self.socials)
+        chat.register_command("insultme", self.insult_me)
+        chat.register_command("weather", self.weather)
+        chat.register_command("song", self.spotify_now_playing)
+
+        # we are done with our setup, lets start this bot up!
+        chat.start()
+
+        while not chat.is_ready():
+            print(f"Waiting for chat to connect to channel {self.channel['name']}")
+            await asyncio.sleep(2)
+
+        # lets run till we press enter in the console
+        try:
+            async with asyncio.TaskGroup() as task_group:
+
+                task_group.create_task(
+                    self.spotify_client.update_spotify_stream_player(10)
+                )
+                task_group.create_task(self.twitter_routine(chat, 2700))
+                task_group.create_task(self.discord_routine(chat, 3000))
+
+        except KeyboardInterrupt as _:
+            chat.stop()
+            await self.twitch.close()
+        except Exception as error_message:
+            print(f"The following error ocurred:\n{error_message}.\n")
+            print(
+                f"Please verify you have your Twitch chat active via {self.channel['url']}\n"
+            )
+            print("or through your broadcasting tool (OBS, Stream Labs, etc...)\n")
+        finally:
+            chat.stop()
+            await self.twitch.close()
+
+    # this will be called when the event READY is triggered, which will be on bot start
+    async def on_ready(self, ready_event: EventData):
         """Initialize the bot"""
 
-        with open(STATS_FILE, "r", encoding="utf-8") as file:
-            data = json.load(file)
-
-        self.lifetime_wins = data["wz_wins"]
-        self.lifetime_deaths = data["deaths"]
-        self.lifetime_chalked = data["chalked"]
-        self.dmz_squad_pr = data["dmz_squad_pr_kills"]
+        channel = self.channel["name"]
+        await ready_event.chat.join_room(channel)
+        await ready_event.chat.send_message(
+            channel, "I am ready to process messages! :)"
+        )
 
         print(
             emoji.emojize(
-                f"{self.nick} is up and running on Twitch! :robot:", language="alias"
+                f"{self.bot_name} is up and running on Twitch! :robot:",
+                language="alias",
             )
         )
 
-        # Start the routines
-        self.twitter_routine.start()
-        self.discord_routine.start()
-        # self.merch_routine.start()
-
-    async def event_message(self, message: Message):
+    async def on_message(self, msg: ChatMessage):
         """
-        Read in message from chat
-
-        Args:
-            message (Message): Message from Twitch chat
+        Determine if the message is a greeting or not. If it is, reply with a greeting,
+        else ignore.
         """
-        # Messages with echo set to True are messages sent by the bot.
-        # Ignore them
-        if message.echo:
-            return
+        if msg.text.lower() in ["hello", "hi"]:
+            await self.send_greeting(msg)
 
-        if self.logging:
-            with open(f"./.logs/{self.session_log}", "a+", encoding="utf-8") as log:
-                log.write(f"{message.author.name}: {message.content}\n\n")
+        elif msg.text.lower() in ["!sr", "!songrequest", "!spotifyrequest"]:
+            await self.spotify_request(msg)
 
-        # Check if message is a greeting message or if it is a @message
-        content = message.content.lower()
-        if content.split()[0] in [
-            "hello",
-            "hi",
-        ]:
-            message.content = "!hello"
-        elif content.startswith(f"@{self.nick.lower()}"):
-            message.content = f"!{message.content.lower()}"
-        elif content.startswith("#treatsforgus"):
-            message.content = f"!{message.content.lower()}"
+        elif msg.text.lower().split()[0] == f"@{self.bot_name}":
+            await self.chat_gpt(msg)
 
-        # relay message
-        await self.handle_commands(message)
-
-    @commands.command(name="8ball")
-    async def eight_ball(self, context: commands.Context):
-        """
-        Send the user a random response to their question.
-        Based on the standard responses from 8ball.
-
-        Args:
-            context (commands.Context): _description_
-        """
-        question = context.message.content.strip("!8ball")
-
-        if not question:
-            await context.reply(
-                "ummm... you need to ask me a question before I can answer."
-            )
-        else:
-            await context.reply(
-                emoji.emojize(
-                    f":pool_8_ball: says.... {random.choice(EIGHT_BALL_REPSONSES)}",
-                    language="alias",
-                )
-            )
-
-    @commands.command(name="hello")
-    async def hello(self, context: commands.Context):
+    async def send_greeting(self, msg: ChatMessage):
         """
         Return a hello to the user
 
         Args:
-            context (commands.Context): Context Object
+            cmd (ChatCommand): cmd Object
         """
         if not self.openai_key:
-            await context.reply(
-                f"Sorry, @{context.channel.name} does not have GPT implemented."
+            await msg.reply(
+                f"Sorry, @{self.channel['name']} does not have GPT implemented."
             )
         else:
             # Generation Parameters from OpenAI Playground
@@ -194,9 +233,11 @@ class TwitchBot(commands.Bot):
             messages = [
                 {
                     "role": "system",
-                    "content": "You are a Twitch bot. You provide a unique welcome reply to each user and thank them for joining my Twitch stream.",
+                    "content": "You are a Twitch bot. "
+                    "You provide a unique welcome reply to each user "
+                    "and thank them for joining my Twitch stream.",
                 },
-                {"role": "user", "content": context.message.content},
+                {"role": "user", "content": f"{msg.user.name} says {msg.text}"},
             ]
 
             response = openai.ChatCompletion.create(
@@ -206,273 +247,182 @@ class TwitchBot(commands.Bot):
 
             response = str(response["choices"][0]["message"]["content"])
 
-            await context.reply(response)
+            await msg.reply(response)
 
-    @commands.command(name="raffle")
-    async def raffle(self, context: commands.Context):
+    # this will be called whenever someone subscribes to a channel
+    async def on_sub(self, sub: ChatSub):
         """
-        Return a hello to the user
+        Send a message thanking the user for subbing!
 
         Args:
-            context (commands.Context): Context Object
+            sub (ChatSub): ChatSub Object from TwitchAPI
         """
-        current_time = datetime.now()
-
-        if self.recent_raffle:
-
-            elapsed_time = (current_time - self.raffle_time).total_seconds() // 60
-            if elapsed_time >= self.raffle_cooldown_time:
-                await context.send(
-                    emoji.emojize("Okay! Let's do a raffle! :ticket:", language="alias")
-                )
-                await context.send("!raffle")
-                self.raffle_time = datetime.now()
-                self.recent_raffle = True
-            else:
-                await context.send(
-                    f"I am sorry, {context.author.mention}, "
-                    "raffle is currently in cool down for another "
-                    f"{self.raffle_cooldown_time - elapsed_time} minute(s).",
-                )
+        if not self.openai_key:
+            await sub.chat.send_message(
+                self.channel["name"],
+                f"Sorry, @{self.channel['name']} does not have the Open Ai API implemented.",
+            )
         else:
-            await context.send(
-                emoji.emojize("Okay! Let's do a raffle! :ticket:", language="alias")
-            )
-            await context.send("!raffle")
-            self.raffle_time = datetime.now()
-            self.recent_raffle = True
+            # Generation Parameters from OpenAI Playground
+            openai.api_key = self.openai_key
 
-    @commands.command(name="died", aliases=["dead"])
-    async def died(self, context: commands.Context):
+            messages = [
+                {
+                    "role": "system",
+                    "content": "You are a Twitch bot. "
+                    "You generate a unique reply thanking this user for subscribing to my channel"
+                    "and supporting me",
+                },
+                {
+                    "role": "user",
+                    "content": f"{sub.chat.username} has subbed for {sub.sub_type}",
+                },
+            ]
+
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=messages,
+            )
+
+            response = str(response["choices"][0]["message"]["content"])
+
+            await sub.chat.send_message(self.channel["name"], response)
+
+    async def clip(self, cmd: ChatCommand):
         """
-        Update the death stats
+        Create a clip of the stream
 
         Args:
-            context (commands.Context): Context Object
+            cmd (ChatCommand): TwitchAPI Chat Command
         """
-        self.session_deaths += 1
-        self.lifetime_deaths += 1
+        try:
+            created_clip = await self.twitch.create_clip(self.channel["id"])
+            verify_created_clip = await self.twitch.get_clips(created_clip.id)
 
-        with open(STATS_FILE, "r", encoding="utf-8") as file:
-            data = json.load(file)
-
-        data["deaths"] = self.lifetime_deaths
-
-        with open(STATS_FILE, "w", encoding="utf-8") as file:
-            file.write(json.dumps(data, indent=4))
-
-        with open(SESSION_DEATHS_FILE, "w", encoding="utf-8") as file:
-            file.write(f"deaths: {self.session_deaths}")
-
-        await context.send(
-            emoji.emojize(
-                f":skull::skull::skull::skull::skull: @{context.channel.name} has died "
-                f"{self.session_deaths} time(s) this session and "
-                f"{self.lifetime_deaths} times in his career.",
-                language="alias",
+            await cmd.reply(
+                f"Here is your created clip: {verify_created_clip['data'][0]['url']}"
             )
-        )
+        except Exception as error_message:
+            with open(
+                f"{self.logging_path}/{self.session_log}", "w", encoding="utf-8"
+            ) as log:
+                log.write(f"Clip-Creation-Error:\n{error_message}")
+            await cmd.reply(
+                "I am sorry, I could not create the clip. "
+                "Please have @therealcodeman check the debug logs."
+            )
 
-    @commands.command(name="win", aliases=["dub"])
-    async def win(self, context: commands.Context):
+    async def eight_ball(self, cmd: ChatCommand):
+        """
+        Send the user a random response to their question.
+        Based on the standard responses from 8ball.
+
+        Args:
+            cmd (ChatCommand): _description_
+        """
+        question = cmd.text
+        if not question:
+            await cmd.reply(
+                "ummm... you need to ask me a question before I can answer."
+            )
+        else:
+            await cmd.reply(
+                emoji.emojize(
+                    f":pool_8_ball: says.... {random.choice(EIGHT_BALL_REPSONSES)}",
+                    language="alias",
+                )
+            )
+
+    async def win(self, cmd: ChatCommand):
         """
         Update the win stats
 
         Args:
-            context (commands.Context): Context Object
+            cmd (ChatCommand): cmd Object
         """
         self.session_wins += 1
-        self.lifetime_wins += 1
-
-        with open(STATS_FILE, "r", encoding="utf-8") as file:
-            data = json.load(file)
-
-        data["total_wz_wins"] = self.lifetime_wins
-
-        with open(STATS_FILE, "w", encoding="utf-8") as file:
-            file.write(json.dumps(data, indent=4))
 
         with open(SESSION_WINS_FILE, "w", encoding="utf-8") as file:
             file.write(f"wins: {self.session_wins}")
 
-        await context.send(
+        await cmd.send(
             emoji.emojize(
-                f":trophy::trophy::trophy::trophy::trophy::trophy:@{context.channel.name} has won "
-                f"{self.session_wins} time(s) this session and "
-                f"{self.lifetime_wins} times in his career.",
+                ":trophy::trophy::trophy::trophy::trophy::trophy: THAT MAKES "
+                f"{self.session_wins} WIN(S) ON THE DAY!!! LFG!!!",
                 language="alias",
             )
         )
 
-    @commands.command(name="clearwins")
-    async def clear_wins(self, context: commands.Context):
+    async def clear_wins(self, cmd: ChatCommand):
         """
         Clears the session wins
 
         Args:
-            context (commands.Context): Context Object
+            cmd (ChatCommand): cmd Object
         """
         self.session_wins = 0
 
         with open(SESSION_WINS_FILE, "w", encoding="utf-8") as file:
             file.write(f"wins: {self.session_wins}")
 
-        await context.send("Session wins have been reset :)")
+        await cmd.send("Session wins have been reset to 0 :)")
 
-    @commands.command(name="dmzpr")
-    async def update_dmz_pr(self, context: commands.Context):
-        """
-        Update the death stats
-
-        Args:
-            context (commands.Context): Context Object
-        """
-
-        dmz_pr = int(context.message.content.strip("!dmzpr"))
-
-        if dmz_pr <= self.dmz_squad_pr:
-            await context.reply(
-                f"I am sorry, {context.message.author.mention}. "
-                f"That does not be their current PR of ({self.dmz_squad_pr})"
-            )
-        else:
-            with open(STATS_FILE, "r", encoding="utf-8") as file:
-                data = json.load(file)
-
-            data["dmz_squad_pr_kills"] = dmz_pr
-
-            with open(STATS_FILE, "w", encoding="utf-8") as file:
-                file.write(json.dumps(data, indent=4))
-
-            await context.send(
-                emoji.emojize(
-                    f":skull: @{context.channel.name} and squad have beat their kill PR! "
-                    f"WAS: {self.dmz_squad_pr} and is "
-                    f"NOW: {dmz_pr}",
-                    language="alias",
-                )
-            )
-
-            self.dmz_squad_pr = dmz_pr
-
-    @commands.command(name="chalked")
-    async def chalked(self, context: commands.Context):
-        """
-        Update the chalked stats
-
-        Args:
-            context (commands.Context): Context Object
-        """
-        self.session_chalked += 1
-        self.lifetime_chalked += 1
-
-        with open(STATS_FILE, "r", encoding="utf-8") as file:
-            data = json.load(file)
-
-        data["chalked"] = self.lifetime_chalked
-
-        with open(STATS_FILE, "w", encoding="utf-8") as file:
-            file.write(json.dumps(data, indent=4))
-
-        await context.send(
-            f":speech_balloon: @{context.channel.name} said "
-            f"`I'm chalked` {self.session_chalked}"
-            f"time(s) this session and {self.lifetime_chalked} times in his career.",
-            language="alias",
-        )
-
-    @commands.command(name="guscam")
-    async def guscam(self, context: commands.Context):
-        """
-        Send the message to show the Gus Cam.
-
-        Args:
-            context (commands.Context): Context Object
-        """
-        await context.send(
-            emoji.emojize(
-                ":dog: :wolf: GIVE THE PEOPLE WHAT THEY WANT! "
-                "GUUUUUUS CAAAAAAAAM!!!!!!!! :dog: :wolf:",
-                language="alias",
-            )
-        )
-
-    @commands.command(name="#treatsforgus")
-    async def treats_for_gus(self, context: commands.Context):
-        """
-        Send the message to show the Gus Cam.
-
-        Args:
-            context (commands.Context): Context Object
-        """
-        await context.send(
-            emoji.emojize(
-                ":dog: :wolf: GIVE THE GOOD BOY A GOD DAMN TREAT! :dog: :wolf:",
-                language="alias",
-            )
-        )
-
-        await context.reply(
-            "To give Gus a treat, please use the following command:\n!redeem treatsforgus"
-        )
-
-    @commands.command(name="discord")
-    async def discord(self, context: commands.Context):
+    async def discord(self, cmd: ChatCommand):
         """
         Send the message to show the discord invite.
 
         Args:
-            context (commands.Context): Context Object
+            cmd (ChatCommand): cmd Object
         """
-        await context.send("Join CODEMAN's discord! https://discord.gg/z6qQ2JahYY")
+        await cmd.send("Join CODEMAN's discord! https://discord.gg/z6qQ2JahYY")
 
-    @commands.command(name="commands")
-    async def command_help(self, context: commands.Context):
+    async def help(self, cmd: ChatCommand):
         """
         Send the message to show the commands for the bot.
 
         Args:
-            context (commands.Context): Context Object
+            cmd (ChatCommand): cmd Object
         """
-        await context.send(
+        await cmd.send(
             "You can find the list of commands here on Github! "
             "https://github.com/cdeeran/codemanbot/blob/0da51e45d9c4472c068756571acc11234ab95172/README.md"
         )
 
-    @commands.command(name="@therealcodemanbot")
-    async def ai_response(self, context: commands.Context):
+    async def chat_gpt(self, msg: ChatMessage):
         """
         Have the bot interact with the user via GPT-3
 
         Args:
-            context (commands.Context): Context Object
+            cmd (ChatCommand): cmd Object
         """
         if not self.openai_key:
-            await context.reply(
-                f"Sorry, @{context.channel.name} does not have GPT implemented."
+            await msg.reply(
+                f"Sorry, @{self.channel['name']} does not have GPT implemented."
             )
         else:
             # Generation Parameters from OpenAI Playground
             openai.api_key = self.openai_key
 
-            formatted_message = "".join(
-                context.message.content.strip(f"!{context.command.name}")
-            ).strip()
+            formatted_message = msg.text.strip(f"@{self.bot_name}")
 
-            if formatted_message is not None and formatted_message != "":
+            if msg.text is not None and msg.text != "":
 
                 messages = [
                     {
                         "role": "system",
-                        "content": "You are a Twitch bot that is over the legal age of 21. Trolling, explict content and language is allowed as it is an over 18 channel",
+                        "content": "You are a Twitch bot that is over the legal age of 21. "
+                        "Trolling, explict content and language is allowed "
+                        "as it is an over 18 channel",
                     },
                     {
                         "role": "assistant",
-                        "content": "lmao look at this fucking noob! Why to get absolutley #wrecked! Hold this L broski! hahaha",
+                        "content": "lmao look at this fucking noob! Why to get "
+                        "absolutley #wrecked! Hold this L broski! hahaha",
                     },
                     {
                         "role": "user",
-                        "content": "lmao! @therealcodemanbot that was funny as fuck! Love the troll man! Let's keeping talking more shit!",
+                        "content": "lmao! @therealcodemanbot that was funny as fuck! "
+                        "Love the troll man! Let's keeping talking more shit!",
                     },
                     {"role": "assistant", "content": "okay! lfg!!! KEKW"},
                     {"role": "user", "content": formatted_message},
@@ -484,59 +434,67 @@ class TwitchBot(commands.Bot):
 
                 response = str(response["choices"][0]["message"]["content"])
 
-                try:
-                    await context.reply(response)
+                # Determine if we need to break the message up
+                if len(response) > 450:
+                    await self.send_multiple_repsonses(response, msg)
+                else:
+                    await msg.reply(response)
 
-                except InvalidContent as _:
-
-                    words = response.split()
-
-                    responses = Queue()
-
-                    temp = ""
-                    for word in words:
-                        if len(temp) + len(word) < 450:
-                            temp += f"{word} "
-                        else:
-                            responses.put(temp)
-                            temp = ""
-
-                    counter = 1
-                    size = responses.qsize()
-                    while not responses.empty():
-                        await context.reply(
-                            f"REPLY ({counter}/{size}): {responses.get()}"
-                        )
-                        counter += 1
             else:
-                await context.reply("Yes?.")
+                await msg.reply("Yes?.")
 
-    @commands.command(name="lurk")
-    async def lurk(self, context: commands.Context):
+    async def send_multiple_respones(self, response: str, msg: ChatMessage):
+        """
+        Twitch only allows a message to be ~500 characters. GPT can
+        return more than that sometimes. This function will break down
+        GPT's repsonse and send it in multiple replies.
+
+        Args:
+            response (str): String from GPT
+            msg (ChatMessage): ChatMessage object from Twitch API
+        """
+        words = response.split()
+
+        responses = Queue()
+
+        temp = ""
+        for word in words:
+            if len(temp) + len(word) < 450:
+                temp += f"{word} "
+            else:
+                responses.put(temp)
+                temp = ""
+
+        counter = 1
+        size = responses.qsize()
+        while not responses.empty():
+            await msg.reply(f"REPLY ({counter}/{size}): {responses.get()}")
+            counter += 1
+
+    async def lurk(self, cmd: ChatCommand):
         """
         Acknowledge the user is lurking and supporting the stream!
 
         Args:
-            context (commands.Context): Context Object
+            cmd (ChatCommand): cmd Object
         """
-        await context.send(
+        await cmd.reply(
             emoji.emojize(
-                f"{context.author.mention} rodger that! Thank you for supporting! :red_heart:",
+                f"@{self.channel['name']} rodger that! Thank you for supporting! :red_heart:",
                 language="alias",
             )
         )
 
-    @commands.command(name="insultme")
-    async def insult_me(self, context: commands.Context):
+    async def insult_me(self, cmd: ChatCommand):
         """
         Have the bot interact with the user via GPT-3
 
         Args:
-            context (commands.Context): Context Object
+            cmd (ChatCommand): cmd Object
         """
         if not self.openai_key:
-            await context.reply(
-                f"Sorry, @{context.channel.name} does not have GPT implemented."
+            await cmd.reply(
+                f"Sorry, @{self.channel['name']} does not have GPT implemented."
             )
         else:
             # Generation Parameters from OpenAI Playground
@@ -561,22 +519,21 @@ class TwitchBot(commands.Bot):
 
             response = str(response["choices"][0]["message"]["content"])
 
-            await context.reply(response)
+            await cmd.reply(response)
 
-    @commands.command(name="songrequest", aliases=["sr", "request"])
-    async def spotify_request(self, context: commands.Context):
+    async def spotify_request(self, cmd: ChatCommand):
         """
         Request a song on spotify
 
         Args:
-            context (commands.Context): Context Object
+            cmd (ChatCommand): cmd Object
         """
-        request_url = context.message.content.split()[-1]
+        request_url = cmd.text
 
         status = self.spotify_client.request_track(request_url)
 
         if status != SpotifyReturnCode.SUCCESS:
-            await context.reply(
+            await cmd.reply(
                 emoji.emojize(
                     ":exclamation: Failed to add request. "
                     f"Reason: {status.name} code: {status.value} :pensive:",
@@ -584,17 +541,31 @@ class TwitchBot(commands.Bot):
                 )
             )
         else:
-            await context.reply(
-                emoji.emojize("Request added! :notes:", language="alias")
+            await cmd.reply(emoji.emojize("Request added! :notes:", language="alias"))
+
+    async def spotify_now_playing(self, cmd: ChatCommand):
+        """
+        Get the current song playing on Spotify
+
+        Args:
+            cmd (ChatCommand): cmd Object
+        """
+        response = self.spotify_client.get_now_playing()
+
+        if response["return_code"] == SpotifyReturnCode.SUCCESS:
+
+            await cmd.reply(response["response"])
+        else:
+            await cmd.reply(
+                f"Error: {response['return_code']} - {response['response']}"
             )
 
-    @commands.command(name="socials")
-    async def socials(self, context: commands.Context):
+    async def socials(self, cmd: ChatCommand):
         """
         Send people the socials
 
         Args:
-            context (commands.Context): Context Object
+            cmd (ChatCommand): cmd Object
         """
         formatted_socials = emoji.emojize(
             f":tv: YouTube: {__contact__['Youtube']}\n"
@@ -603,17 +574,16 @@ class TwitchBot(commands.Bot):
             language="alias",
         )
 
-        await context.send(formatted_socials)
+        await cmd.send(formatted_socials)
 
-    @commands.command(name="weather")
-    async def weather(self, context: commands.Context):
+    async def weather(self, cmd: ChatCommand):
         """
         Retrieve current weather information
 
         Args:
-            context (commands.Context): _description_
+            cmd (ChatCommand): _description_
         """
-        location = context.message.content.strip(context.command.name)
+        location = cmd.text
 
         url = f"https://api.weatherapi.com/v1/forecast.json?key=57dd1eeea5374875a0131010232002&q={location}&aqi=no"
 
@@ -636,31 +606,33 @@ class TwitchBot(commands.Bot):
             f"Data was last updated at {last_updated}."
         )
 
-        await context.reply(reply)
+        await cmd.reply(reply)
 
-    @routines.routine(minutes=45)
-    async def twitter_routine(self):
+    async def twitter_routine(self, chat: Chat, interval: int):
         """
         routine to post the twitter link
         """
-        message = (
-            "Follow therealcodeman on 🐦 Twitter! 💩 posts, MEMES, Live notifications and more\n"
-            f"{__contact__['Twitter']}"
-        )
-        await self.get_channel("therealcodeman").send(message)
+        while True:
+            message = (
+                "Follow therealcodeman on 🐦 Twitter! 💩 posts, MEMES, Live notifications and more\n"
+                f"{__contact__['Twitter']}"
+            )
+            await chat.send_message(self.channel["name"], message)
+            await asyncio.sleep(interval)
 
-    @routines.routine(minutes=60)
-    async def discord_routine(self):
+    async def discord_routine(self, chat: Chat, interval: int):
         """
         routine to post the discord link
         """
-        message = (
-            "Board the spaceship and join fellow Astronauts 🧑‍🚀👩‍🚀👨‍🚀 on this adventure!\n"
-            "Join the Discord for livestream notifications, contests, memes and more!\n"
-            f"{__contact__['Discord']}"
-        )
+        while True:
+            message = (
+                "Board the spaceship and join fellow Astronauts 🧑‍🚀👩‍🚀👨‍🚀 on this adventure!\n"
+                "Join the Discord for livestream notifications, contests, memes and more!\n"
+                f"{__contact__['Discord']}"
+            )
 
-        await self.get_channel("therealcodeman").send(message)
+            await chat.send_message(self.channel["name"], message)
+            await asyncio.sleep(interval)
 
     # @routines.routine(minutes=30)
     # async def merch_routine(self):
@@ -671,3 +643,36 @@ class TwitchBot(commands.Bot):
     #         "🚨🚨🚨 MERCH ALERT 🚨🚨🚨\n" "👀😎🤯😛\n" f"Check it out 👉 {__contact__['Merch']}"
     #     )
     #     await self.get_channel("therealcodeman").send(message)
+
+    # async def raffle(self, cmd: ChatCommand):
+    #     """
+    #     Return a hello to the user
+
+    #     Args:
+    #         cmd (ChatCommand): cmd Object
+    #     """
+    #     current_time = datetime.now()
+
+    #     if self.recent_raffle:
+
+    #         elapsed_time = (current_time - self.raffle_time).total_seconds() // 60
+    #         if elapsed_time >= self.raffle_cooldown_time:
+    #             await cmd.send(
+    #                 emoji.emojize("Okay! Let's do a raffle! :ticket:", language="alias")
+    #             )
+    #             await cmd.send("!raffle")
+    #             self.raffle_time = datetime.now()
+    #             self.recent_raffle = True
+    #         else:
+    #             await cmd.send(
+    #                 f"I am sorry, {cmd.author.mention}, "
+    #                 "raffle is currently in cool down for another "
+    #                 f"{self.raffle_cooldown_time - elapsed_time} minute(s).",
+    #             )
+    #     else:
+    #         await cmd.send(
+    #             emoji.emojize("Okay! Let's do a raffle! :ticket:", language="alias")
+    #         )
+    #         await cmd.send("!raffle")
+    #         self.raffle_time = datetime.now()
+    #         self.recent_raffle = True

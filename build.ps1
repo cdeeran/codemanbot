@@ -1,0 +1,1 @@
+pyinstaller main.py -n codemanbot -i './assets/icons/logo.ico' --add-data 'assets;assets' --add-data 'player_overlay;player_overlay' --noconfirm

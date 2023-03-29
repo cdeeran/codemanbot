@@ -134,3 +134,5 @@ dmypy.json
 /player_overlay
 /data
 /debug
+
+config.py

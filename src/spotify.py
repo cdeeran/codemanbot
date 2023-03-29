@@ -12,13 +12,15 @@ __contact__ = {
     "Discord": "https://discord.gg/BW34FuYfnK",
     "Email": "dev@codydeeran.com",
 }
+
+import asyncio
 import json
 import shutil
-import requests
 from typing import Any
 from enum import Enum
 from datetime import datetime
-import spotipy
+import requests
+from spotipy import Spotify
 from spotipy.oauth2 import SpotifyOAuth
 
 
@@ -37,33 +39,44 @@ class SpotifyReturnCode(Enum):
     FAILED_TO_ESTABLISH_CONNECTION = 4
     FAILED_TO_ADD_TO_QUEUE = 5
     FAILED_TO_BEGIN_PLAYBACK = 6
+    NO_CURRENT_PLAYBACK = 7
 
 
-class Spotify:
+class SpotifyClient:
     """
     Spotify interface using the verified spotipy library
     """
 
     def __init__(
-        self, device_name: str, client_id: str, client_secret: str, redirect: str
+        self,
+        device_name: str,
+        client_id: str,
+        client_secret: str,
+        redirect: str,
+        logging_path: str,
+        player_overlay_path: str,
     ):
-        self._scope = "user-read-playback-state,user-modify-playback-state"
-        self._credentials = SpotifyOAuth(
+        self._scope: str = "user-read-playback-state,user-modify-playback-state"
+        self._credentials: SpotifyOAuth = SpotifyOAuth(
             client_id=client_id,
             client_secret=client_secret,
             redirect_uri=redirect,
             scope=self._scope,
             open_browser=True,
         )
-        self.spotify = spotipy.Spotify(client_credentials_manager=self._credentials)
-        self._device_name = device_name
-        self._device_id = -1
-        self._local_queue = []
-        self.session_log = (
+        self.spotify: Spotify = Spotify(client_credentials_manager=self._credentials)
+        self._device_name: str = device_name
+        self._device_id: int = -1
+        self._local_queue: list = []
+        self.logging_path: str = logging_path
+        self.session_log: str = (
             f"spotify_session_{datetime.now().strftime('%d-%m-%y-%H-%M-%S')}.log"
         )
-        self._establish_connection()
         self._previous_track_id: str = ""
+        self.album_artwork = f"{player_overlay_path}/album_artwork.png"
+        self.artist = f"{player_overlay_path}/song_artist.txt"
+        self.song_title = f"{player_overlay_path}/song_title.txt"
+        self._establish_connection()
 
     def _find_device_id(self) -> Any:
         """
@@ -101,7 +114,9 @@ class Spotify:
         current_retries = 1
         device_id = self._find_device_id()
 
-        with open(f"./.logs/{self.session_log}", "a+", encoding="utf-8") as log:
+        with open(
+            f"{self.logging_path}/{self.session_log}", "a+", encoding="utf-8"
+        ) as log:
             while device_id == -1 and current_retries <= max_attempts:
                 log.write("Attempting to establish spotify device connection...")
                 log.write(f"Retries remaining: {(max_attempts - current_retries)}")
@@ -246,12 +261,12 @@ class Spotify:
 
         if self.spotify.currently_playing():
             try:
-                self.spotify.add_to_queue(
-                    uri=requested_track, device_id=self.get_device_id()
-                )
+                self.spotify.add_to_queue(uri=requested_track)
                 return SpotifyReturnCode.SUCCESS
             except Exception as error:
-                with open(f"./.logs/{self.session_log}", "a+", encoding="utf-8") as log:
+                with open(
+                    f"{self.logging_path}/{self.session_log}", "a+", encoding="utf-8"
+                ) as log:
                     log.write(error.with_traceback())
                 return SpotifyReturnCode.FAILED_TO_ADD_TO_QUEUE
         else:
@@ -260,63 +275,90 @@ class Spotify:
                     uris=[requested_track], device_id=self.get_device_id()
                 )
             except Exception as error:
-                with open(f"./.logs/{self.session_log}", "a+", encoding="utf-8") as log:
+                with open(
+                    f"{self.logging_path}/{self.session_log}", "a+", encoding="utf-8"
+                ) as log:
                     log.write(error.with_traceback())
                 return SpotifyReturnCode.FAILED_TO_BEGIN_PLAYBACK
 
-    def update_spotify_stream_player(self):
+    def get_now_playing(self):
         """
-        example
+        Get and return the current song playing in the format
+        of Track by Artists - Spotify Link
+
+        Returns:
+            dictionary:
+                response: now playing information or error information
+                return_code: SUCCESS or NO_CURRENT_PLAYBACK
         """
-        try:
+        if self.spotify.currently_playing():
 
-            # Check that spotify is not paused or down before
-            # attempting to grab the queue
-            if self.spotify.current_playback() is not None:
+            response = self.spotify.current_playback()
+            track = response["item"]["name"]
+            artists = [artist["name"] for artist in response["item"]["artists"]]
+            url = response["item"]["external_urls"]["spotify"]
+            now_playing = f"{track} by {' | '.join(artists)} - Link: {url}"
 
-                spotify_queue = self.spotify.queue()
+            return {"response": now_playing, "return_code": SpotifyReturnCode.SUCCESS}
 
-                # Get the current song playing so users don't request
-                # a song already being played
-                currently_playing = spotify_queue["currently_playing"]
-                current_track = {
-                    "artwork_url": currently_playing["album"]["images"][1]["url"],
-                    "title": currently_playing["name"],
-                    "artists": [
-                        artist["name"] for artist in currently_playing["artists"]
-                    ],
-                    "duration": currently_playing["duration_ms"],
-                    "id": currently_playing["id"],
-                }
+        return {
+            "response": "Failed to get playback. Verify Spotify is up and running.",
+            "return_code": SpotifyReturnCode.NO_CURRENT_PLAYBACK,
+        }
 
-                if current_track["id"] != self._previous_track_id:
+    async def update_spotify_stream_player(self, interval: int):
+        """
+        Update the now playing overlay on the Twitch Stream
+        """
+        while True:
+            try:
 
-                    response = requests.get(
-                        current_track["artwork_url"], stream=True, timeout=5
-                    )
+                # Check that spotify is not paused or down before
+                # attempting to grab the queue
+                if self.spotify.current_playback() is not None:
 
-                    if response.status_code == 200:
-                        with open("./player_overlay/album_artwork.png", "wb") as file:
-                            shutil.copyfileobj(response.raw, file)
-                    else:
-                        print(
-                            f"Could not download album artwork for: {current_track['title']}"
+                    spotify_queue = self.spotify.queue()
+
+                    # Get the current song playing so users don't request
+                    # a song already being played
+                    currently_playing = spotify_queue["currently_playing"]
+                    current_track = {
+                        "artwork_url": currently_playing["album"]["images"][1]["url"],
+                        "title": currently_playing["name"],
+                        "artists": [
+                            artist["name"] for artist in currently_playing["artists"]
+                        ],
+                        "duration": currently_playing["duration_ms"],
+                        "id": currently_playing["id"],
+                    }
+
+                    if current_track["id"] != self._previous_track_id:
+
+                        response = requests.get(
+                            current_track["artwork_url"], stream=True, timeout=5
                         )
 
-                    # Delete temporary file
-                    del response
+                        if response.status_code == 200:
+                            with open(self.album_artwork, "wb") as file:
+                                shutil.copyfileobj(response.raw, file)
+                        else:
+                            print(
+                                f"Could not download album artwork for: {current_track['title']}"
+                            )
 
-                    with open(
-                        "./player_overlay/song_title.txt", "w", encoding="utf-8"
-                    ) as file:
-                        file.write(current_track["title"] + " " * 10)
+                        # Delete temporary file
+                        del response
 
-                    with open(
-                        "./player_overlay/song_artist.txt", "w", encoding="utf-8"
-                    ) as file:
-                        file.write(" | ".join(current_track["artists"]))
-                        file.write(" " * 5)
+                        with open(self.song_title, "w", encoding="utf-8") as file:
+                            file.write(current_track["title"] + " " * 10)
 
-                    self._previous_track_id = current_track["id"]
-        except Exception as error:
-            print(f"{error}")
+                        with open(self.artist, "w", encoding="utf-8") as file:
+                            file.write(" | ".join(current_track["artists"]))
+                            file.write(" " * 5)
+
+                        self._previous_track_id = current_track["id"]
+
+            except Exception as error:
+                print(f"{error}")
+
+            await asyncio.sleep(interval)
