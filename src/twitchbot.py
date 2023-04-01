@@ -152,7 +152,9 @@ class CodemanTwitchBot:
         chat.register_command("socials", self.socials)
         chat.register_command("insultme", self.insult_me)
         chat.register_command("weather", self.weather)
+        chat.register_command("sr", self.spotify_request)
         chat.register_command("song", self.spotify_now_playing)
+        chat.register_command("queue", self.send_spotify_queue)
 
         # we are done with our setup, lets start this bot up!
         chat.start()
@@ -528,7 +530,7 @@ class CodemanTwitchBot:
         Args:
             cmd (ChatCommand): cmd Object
         """
-        request_url = cmd.text
+        request_url = cmd.text.split()[-1]
 
         status = self.spotify_client.request_track(request_url)
 
@@ -559,6 +561,23 @@ class CodemanTwitchBot:
             await cmd.reply(
                 f"Error: {response['return_code']} - {response['response']}"
             )
+
+    async def send_spotify_queue(self, cmd: ChatCommand):
+        """
+        Get the current song playing on Spotify
+
+        Args:
+            cmd (ChatCommand): cmd Object
+        """
+        response = self.spotify_client.get_queued_songs()
+
+        if response["return_code"] == SpotifyReturnCode.SUCCESS:
+
+            await cmd.send(
+                f"Here are the next 3 songs in the queue: {response['response']}"
+            )
+        else:
+            await cmd.send(f"Error: {response['return_code']} - {response['response']}")
 
     async def socials(self, cmd: ChatCommand):
         """

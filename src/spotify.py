@@ -183,6 +183,37 @@ class SpotifyClient:
 
         return SpotifyReturnCode.SUCCESS
 
+    def get_queued_songs(self) -> dict:
+        """
+        Get the top 3 queued songs for the users
+
+        Returns:
+            dict:
+                Key - response: Value - String of top 3 songs to send to user
+                Key - return_code: Value - Spotify Return Code
+        """
+        try:
+            current_queue = self.spotify.queue()
+
+            track_counter = 0
+
+            queued_songs = ""
+
+            for song in current_queue["queue"]:
+                track_counter += 1
+                queued_songs += f"{track_counter}. {song['name']} by {', '.join([artist['name'] for artist in song['artists']])}"
+
+                if track_counter < 3:
+                    queued_songs += " | "
+
+                if track_counter == 3:
+                    break
+
+            return {"response": queued_songs, "return_code": SpotifyReturnCode.SUCCESS}
+        except Exception as error:
+            print(error)
+            return {"response": "", "return_code": SpotifyReturnCode.FAILED}
+
     def _update_local_queue(self) -> SpotifyReturnCode:
 
         try:
