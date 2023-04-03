@@ -114,7 +114,7 @@ class CodemanTwitchBot:
         """
         # set up twitch api instance and add user authentication with some scopes
         self.twitch = await Twitch(self.twitch_client_id, self.twitch_client_secret)
-        auth = UserAuthenticator(self.twitch, USER_SCOPES)
+        auth = UserAuthenticator(self.twitch, USER_SCOPES, force_verify=True)
         user_auth_token, refresh_token = await auth.authenticate()
         await self.twitch.set_user_authentication(
             user_auth_token, USER_SCOPES, refresh_token
@@ -272,8 +272,8 @@ class CodemanTwitchBot:
                 {
                     "role": "system",
                     "content": "You are a Twitch bot. "
-                    "You generate a unique reply thanking this user for subscribing to my channel"
-                    "and supporting me",
+                    "You generate a thank you reply for subscribing"
+                    "to my channel and supporting me",
                 },
                 {
                     "role": "user",
@@ -299,11 +299,19 @@ class CodemanTwitchBot:
         """
         try:
             created_clip = await self.twitch.create_clip(self.channel["id"])
-            verify_created_clip = await self.twitch.get_clips(created_clip.id)
+            verify_created_clip = self.twitch.get_clips(clip_id=[created_clip.id])
 
-            await cmd.reply(
-                f"Here is your created clip: {verify_created_clip['data'][0]['url']}"
-            )
+            published_clip_url = created_clip.edit_url.split("/edit")[0]
+            if verify_created_clip:
+                await cmd.reply(f"Here is your created clip: {published_clip_url}")
+                await cmd.reply(
+                    f"If you wish to make edits, here is the url to do so: {created_clip.edit_url}"
+                )
+            else:
+                await cmd.reply(
+                    "I am sorry, it appears clip was not able to be created :("
+                )
+
         except Exception as error_message:
             with open(
                 f"{self.logging_path}/{self.session_log}", "w", encoding="utf-8"
